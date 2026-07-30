@@ -1,4 +1,4 @@
-# Bluetooth Personal Link (BPL)
+# bitDrive
 
 A persistent Bluetooth-based communication platform between laptop (desktop) and Android phone without any network infrastructure.
 
