@@ -1,0 +1,27 @@
+[package]
+name = "bpl-daemon"
+version = { workspace = true }
+edition = { workspace = true }
+description = "BPL Desktop Daemon"
+publish = false
+
+[[bin]]
+name = "bpl-daemon"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "sync", "time", "signal"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+clap = { workspace = true, features = ["derive", "env"] }
+uuid = { workspace = true, features = ["v4", "serde", "fast-rng"] }
+
+# Core dependencies
+bpl-core = { path = "../core" }
+bpl-protocol = { path = "../protocol" }
+bpl-bluetooth = { path = "../bluetooth" }
+bpl-config = { path = "../core" }

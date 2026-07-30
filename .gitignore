@@ -1,0 +1,199 @@
+# Bluetooth Personal Link - Git Ignore Rules
+# Generated for both Desktop (Rust) and Android (Kotlin/Gradle) components
+
+# =============================================================================
+# Rust / Cargo
+# =============================================================================
+/target/
+**/target/
+Cargo.lock
+
+# =============================================================================
+# Android / Gradle
+# =============================================================================
+/android/.gradle/
+/android/.idea/
+/android/app/build/
+/android/build/
+/android/local.properties
+/android/gradle.properties.local
+/android/*.jks
+/android/*.keystore
+/android/keystore.properties
+/android/gradle.properties.secret
+/android/app/release/
+/android/app/debug/
+/android/app/*.apk
+/android/app/*.aab
+/android/app/*.ap_
+
+# =============================================================================
+# IDE / Editor
+# =============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.temp
+.*.swp
+.*.swo
+
+# =============================================================================
+# OS Generated
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# =============================================================================
+# Logs
+# =============================================================================
+*.log
+logs/
+/logs/
+**/logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# Secrets & Credentials (NEVER COMMIT)
+# =============================================================================
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+*.keystore
+*.jks
+secrets/
+secret/
+credentials/
+*.secret
+*.credentials
+.env
+.env.*
+!.env.example
+!.env.template
+
+# =============================================================================
+# Local Configuration Overrides
+# =============================================================================
+config.local.toml
+*.local.toml
+*.local.json
+*.local.yaml
+*.local.yml
+local.config.*
+
+# =============================================================================
+# Generated Protobuf (Optional - commit for reproducibility, uncomment to ignore)
+# =============================================================================
+# /desktop/protocol/src/pb.rs
+# /android/app/src/main/java/com/bluetoothpersonallink/protocol/
+
+# =============================================================================
+# Build Artifacts
+# =============================================================================
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+*.exe
+*.out
+*.bin
+
+# =============================================================================
+# Test Coverage / Reports
+# =============================================================================
+coverage/
+coverage-*/
+*.lcov
+*.gcda
+*.gcno
+*.gcov
+jacoco/
+/android/app/build/reports/
+/android/build/reports/
+
+# =============================================================================
+# Profiling / Benchmarks
+# =============================================================================
+*.prof
+*.profdata
+perf.data
+perf.data.*
+
+# =============================================================================
+# Package Manager Caches
+# =============================================================================
+.cargo/
+~/.cargo/
+.gradle/
+~/.gradle/
+node_modules/
+~/.npm/
+~/.yarn/
+
+# =============================================================================
+# Database Files (Development Only)
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+/data/
+
+# =============================================================================
+# Temporary Files
+# =============================================================================
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# =============================================================================
+# Documentation Build Output
+# =============================================================================
+doc/
+docs/_build/
+docs/build/
+target/doc/
+
+# =============================================================================
+# Distribution / Release
+# =============================================================================
+dist/
+release/
+*.tar.gz
+*.zip
+*.tgz
+
+# =============================================================================
+# Miscellaneous
+# =============================================================================
+*.orig
+*.rej
+.patch
+.diff
+*.patch

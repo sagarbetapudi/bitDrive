@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package bpl.protocol;
+
+option java_package = "com.bluetoothpersonallink.protocol";
+option java_multiple_files = true;
+option go_package = "github.com/bluetoothpersonallink/protocol/go";
+
+import "common.proto";
+
+/// Service capability descriptors with feature flags.
+message ServiceCapability {
+  string service_id = 1;
+  uint32 version = 2;
+  string name = 3;
+  string description = 4;
+  bool required = 5;
+  map<string, string> metadata = 6;
+  uint64 feature_flags = 7; // Bitmask of feature flags
+}
+
+/// Feature flags for each service (bit positions).
+/// Filesystem service features
+enum FilesystemFeature {
+  FS_BASIC = 0;           // List, stat, read, write
+  FS_DIRECTORY_OPS = 1;   // Mkdir, rmdir, rename, move
+  FS_SYMLINKS = 2;        // Read/create symlinks
+  FS_EXTENDED_ATTRS = 3;  // Extended attributes
+  FS_WATCH = 4;           // Filesystem change notifications
+  FS_PERMISSIONS = 5;     // chmod/chown
+  FS_STREAMING = 6;       // Streaming reads
+  FS_SEARCH = 7;          // File search
+}
+
+/// Sync service features
+enum SyncFeature {
+  SYNC_BASIC = 0;         // Basic file sync
+  SYNC_BIDIRECTIONAL = 1; // Two-way sync
+  SYNC_CONFLICT_RESOLUTION = 2; // Conflict handling
+  SYNC_SCHEDULED = 3;     // Scheduled sync
+  SYNC_FILTERS = 4;       // Include/exclude filters
+  SYNC_HASH_VERIFICATION = 5; // Hash-based change detection
+  SYNC_PARTIAL = 6;       // Partial file sync (rsync-like)
+}
+
+/// Photo backup features
+enum PhotoBackupFeature {
+  PHOTO_INCREMENTAL = 0;  // Incremental backup
+  PHOTO_ALBUMS = 1;       // Album organization
+  PHOTO_METADATA = 2;     // EXIF preservation
+  PHOTO_RESUME = 3;       // Resume interrupted
+}
+
+/// Shell service features
+enum ShellFeature {
+  SHELL_BASIC = 0;        // Command execution
+  SHELL_INTERACTIVE = 1;  // PTY/Interactive sessions
+  SHELL_HISTORY = 2;      // Command history
+  SHELL_ENVIRONMENT = 3;  // Environment management
+  SHELL_SIGNALS = 4;      // Signal handling
+  SHELL_MULTIPLEX = 5;    // Multiple sessions
+}
+
+/// Media control features
+enum MediaControlFeature {
+  MEDIA_BASIC = 0;        // Play/pause/stop/next/prev
+  MEDIA_SEEK = 1;         // Seek position
+  MEDIA_VOLUME = 2;       // Volume control
+  MEDIA_METADATA = 3;     // Track metadata
+  MEDIA_ARTWORK = 4;      // Album artwork
+  MEDIA_PLAYLIST = 5;     // Playlist navigation
+  MEDIA_SHUFFLE_REPEAT = 6; // Shuffle/repeat modes
+}
+
+/// Phone filesystem features
+enum PhoneFsFeature {
+  PHONE_FS_BASIC = 0;     // Browse/read
+  PHONE_FS_WRITE = 1;     // Write/create/delete
+  PHONE_FS_STREAM = 2;    // Streaming
+  PHONE_FS_MEDIASTORE = 3; // MediaStore integration
+  PHONE_FS_SAF = 4;       // Storage Access Framework
+  // PHONE_FS_MOUNT = 5;   // DEFERRED: FUSE/Dokan mount support
+}
+
+/// Proximity features
+enum ProximityFeature {
+  PROXIMITY_RSSI = 0;     // RSSI monitoring
+  PROXIMITY_STATES = 1;   // Near/Far/OutOfRange states
+  PROXIMITY_AUTO_RECONNECT = 2; // Auto-reconnect
+  PROXIMITY_ACTIONS = 3;  // Trigger actions on proximity
+}
+
+/// File streaming features
+enum FileStreamFeature {
+  STREAM_BASIC = 0;       // Range requests
+  STREAM_SEEK = 1;        // Seek support
+  STREAM_RESUME = 2;      // Resume interrupted
+  STREAM_BUFFERING = 3;   // Adaptive buffering
+  STREAM_MEDIA_SOURCE = 4; // MediaSource/ExoPlayer integration
+}
+
+/// App launcher features
+enum AppLauncherFeature {
+  LAUNCHER_LIST = 0;      // List installed apps
+  LAUNCHER_ICONS = 1;     // App icons
+  LAUNCHER_LAUNCH = 2;    // Launch apps
+  LAUNCHER_INTENTS = 3;   // Launch with intents
+  LAUNCHER_SHORTCUTS = 4; // App shortcuts
+}
+
+/// Capability negotiation request.
+message CapabilityNegotiateRequest {
+  ProtocolVersion protocol_version = 1;
+  string software_version = 2;
+  string device_name = 3;
+  DeviceId device_id = 4;
+  repeated ServiceCapability capabilities = 5;
+  bool require_all = 6; // If true, fail if any required capability missing
+}
+
+/// Capability negotiation response.
+message CapabilityNegotiateResponse {
+  ResultCode result = 1;
+  ProtocolVersion negotiated_version = 2;
+  repeated ServiceCapability negotiated_capabilities = 3;
+  repeated string missing_required = 4; // Service IDs that were required but not available
+  repeated string unsupported = 5; // Service IDs not supported by peer
+  string error_message = 6;
+}
+
+/// Capability negotiation complete (final handshake).
+message CapabilityNegotiateComplete {
+  bool success = 1;
+  SessionId session_id = 2;
+  repeated ServiceCapability active_services = 3;
+}
+
+/// Service version for compatibility checking.
+message ServiceVersion {
+  string service_id = 1;
+  uint32 min_version = 2;
+  uint32 max_version = 3;
+  uint32 preferred_version = 4;
+}

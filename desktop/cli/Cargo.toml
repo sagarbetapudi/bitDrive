@@ -1,0 +1,28 @@
+[package]
+name = "bpl-cli"
+version = { workspace = true }
+edition = { workspace = true }
+description = "BPL Desktop CLI"
+publish = false
+
+[[bin]]
+name = "bpl-cli"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+clap = { workspace = true }
+base64 = { version = "0.22", features = ["std"] }
+rand = { workspace = true, features = ["std", "rng"] }
+
+# Internal crates
+bpl-protocol = { path = "../protocol" }
+bpl-core = { path = "../core" }
+bpl-bluetooth = { path = "../bluetooth" }
+bpl-daemon = { path = "../daemon" }

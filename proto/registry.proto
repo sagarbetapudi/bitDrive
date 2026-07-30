@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package bpl.protocol;
+
+option java_package = "com.bluetoothpersonallink.protocol";
+option java_multiple_files = true;
+option go_package = "github.com/bluetoothpersonallink/protocol/go";
+
+import "common.proto";
+
+/// Service registration request.
+message ServiceRegisterRequest {
+  ServiceCapability capability = 1;
+  ChannelConfig channel_config = 2;
+  bytes service_state = 3; // Optional persistent state
+}
+
+/// Service registration response.
+message ServiceRegisterResponse {
+  ResultCode result = 1;
+  ChannelId assigned_channel = 2;
+  string error_message = 3;
+}
+
+/// Service unregistration request.
+message ServiceUnregisterRequest {
+  string service_id = 1;
+  ChannelId channel_id = 2;
+}
+
+/// Service unregistration response.
+message ServiceUnregisterResponse {
+  ResultCode result = 1;
+  string error_message = 2;
+}
+
+/// Service discovery request.
+message ServiceDiscoverRequest {
+  string service_id = 1; // Empty = all services
+  uint32 version = 2;    // 0 = any version
+  bool include_inactive = 3;
+}
+
+/// Service discovery response.
+message ServiceDiscoverResponse {
+  ResultCode result = 1;
+  repeated ServiceInfo services = 2;
+  string error_message = 3;
+}
+
+/// Service information (registered service).
+message ServiceInfo {
+  string service_id = 1;
+  uint32 version = 2;
+  string name = 3;
+  string description = 4;
+  ChannelId channel_id = 5;
+  ChannelType channel_type = 6;
+  bool active = 7;
+  bool healthy = 8;
+  Timestamp registered_at = 9;
+  Timestamp last_heartbeat = 10;
+  map<string, string> metadata = 11;
+  uint64 feature_flags = 12;
+}
+
+/// Service heartbeat (keepalive).
+message ServiceHeartbeat {
+  string service_id = 1;
+  ChannelId channel_id = 2;
+  bool healthy = 3;
+  map<string, string> metrics = 4; // Service-specific metrics
+}
+
+/// Service heartbeat response.
+message ServiceHeartbeatResponse {
+  ResultCode result = 1;
+  bool acknowledge = 2;
+}
+
+/// Service event notification.
+message ServiceEvent {
+  enum EventType {
+    SERVICE_REGISTERED = 0;
+    SERVICE_UNREGISTERED = 1;
+    SERVICE_STARTED = 2;
+    SERVICE_STOPPED = 3;
+    SERVICE_HEALTH_CHANGED = 4;
+    SERVICE_CONFIG_CHANGED = 5;
+  }
+  EventType type = 1;
+  ServiceInfo service = 2;
+  string details = 3;
+}
+
+/// Service configuration update.
+message ServiceConfigUpdate {
+  string service_id = 1;
+  map<string, string> config = 2;
+  bool persist = 3;
+}
+
+/// Service configuration response.
+message ServiceConfigUpdateResponse {
+  ResultCode result = 1;
+  string error_message = 2;
+}
+
+/// List all registered services request.
+message ListServicesRequest {
+  bool include_inactive = 1;
+}
+
+/// List all registered services response.
+message ListServicesResponse {
+  ResultCode result = 1;
+  repeated ServiceInfo services = 2;
+}

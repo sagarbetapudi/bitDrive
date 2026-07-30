@@ -1,0 +1,24 @@
+[package]
+name = "bpl-bluetooth"
+version = { workspace = true }
+edition = { workspace = true }
+description = "Bluetooth RFCOMM implementation for BPL"
+publish = false
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "sync", "time"] }
+tracing = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+uuid = { workspace = true, features = ["v4", "serde", "fast-rng"] }
+parking_lot = { workspace = true }
+
+# Bluetooth (Windows)
+windows = { workspace = true }
+
+# Protocol
+bpl-protocol = { path = "../protocol" }

@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package bpl.protocol;
+
+option java_package = "com.bluetoothpersonallink.protocol";
+option java_multiple_files = true;
+option go_package = "github.com/bluetoothpersonallink/protocol/go";
+
+import "common.proto";
+import "filesystem.proto";
+
+/// Phone filesystem service identifier.
+const string PHONE_FS_SERVICE_ID = "bpl.phone_fs";
+const uint32 PHONE_FS_SERVICE_VERSION = 1;
+
+/// Phone FS operation types (extends filesystem ops).
+enum PhoneFsOpType {
+  OP_LIST = 0;
+  OP_STAT = 1;
+  OP_READ = 2;
+  OP_WRITE = 3;
+  OP_CREATE = 4;
+  OP_DELETE = 5;
+  OP_MOVE = 6;
+  OP_COPY = 7;
+  OP_MKDIR = 8;
+  OP_OPEN_DOCUMENT = 9;      // Open via SAF
+  OP_CREATE_DOCUMENT = 10;   // Create via SAF
+  OP_QUERY_ROOTS = 11;       // Get SAF roots
+  OP_GET_MEDIA_METADATA = 12; // Get media metadata
+}
+
+/// Document provider root.
+message DocumentRoot {
+  string root_id = 1;
+  string title = 2;
+  string summary = 3;
+  string icon = 4;
+  string mime_types = 5;       // Comma-separated
+  bool supports_create = 6;
+  bool supports_search = 7;
+  uint32 flags = 8;            // ROOT_FLAG_*
+}
+
+/// Document root flags.
+enum DocumentRootFlag {
+  ROOT_FLAG_SUPPORTS_CREATE = 1;
+  ROOT_FLAG_SUPPORTS_SEARCH = 2;
+  ROOT_FLAG_SUPPORTS_RECENTS = 4;
+  ROOT_FLAG_SUPPORTS_RECENTS = 4;
+  ROOT_FLAG_LOCAL_ONLY = 8;
+}
+
+/// Phone FS request.
+message PhoneFsRequest {
+  PhoneFsOpType op = 1;
+  uint64 request_id = 2;
+  string path = 3;             // Document ID or path
+  string root_id = 4;          // SAF root ID
+  bytes payload = 5;           // For write/create
+  ByteRange range = 6;         // For partial read
+  string mime_type = 7;        // For create
+  string destination = 8;      // For move/copy
+  string display_name = 9;     // For create
+}
+
+/// Phone FS response.
+message PhoneFsResponse {
+  uint64 request_id = 1;
+  ResultCode result = 2;
+  string error_message = 3;
+  repeated DirectoryEntry entries = 4;  // For LIST, QUERY_ROOTS
+  FileMetadata metadata = 5;            // For STAT
+  bytes data = 6;                       // For READ
+  uint64 bytes_written = 7;             // For WRITE
+  string document_id = 8;               // For CREATE/OPEN
+  MediaMetadata media_metadata = 9;     // For GET_MEDIA_METADATA
+}
+
+/// Media metadata for phone files.
+message MediaMetadata {
+  string title = 1;
+  string artist = 2;
+  string album = 3;
+  uint64 duration = 4;         // milliseconds
+  uint32 width = 5;            // For images/video
+  uint32 height = 6;
+  string mime_type = 7;
+  uint64 date_taken = 8;       // Unix timestamp
+  double latitude = 9;         // GPS
+  double longitude = 10;
+  string datetaken_string = 11; // ISO8601
+}
+
+/// Phone FS capabilities.
+message PhoneFsCapabilities {
+  bool documents_provider = 1;
+  bool media_store = 2;
+  bool external_storage = 3;
+  bool streaming = 4;
+  bool partial_reads = 5;
+  bool metadata = 6;
+  bool search = 7;
+}

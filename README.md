@@ -5,7 +5,7 @@ A persistent Bluetooth-based communication platform between laptop (desktop) and
 ## Architecture Overview
 
 ```
-┌─────────────────┐    Bluetooth RFCOMM    ┌─────────────────┐
+┌─────────────────┐    Bluetooth RFCOMM     ┌─────────────────┐
 │  Android App    │ ◄─────────────────────► │ Desktop Daemon  │
 │  (Kotlin)       │                         │  (Rust)         │
 └─────────────────┘                         └─────────────────┘
@@ -30,7 +30,7 @@ playground/
     └── app/                 # Main application module
 ```
 
-## Features
+## Features (V1 Scope)
 
 ### Core Protocol
 - Custom binary protocol over Bluetooth Classic RFCOMM
@@ -41,20 +41,19 @@ playground/
 - Service registry for dynamic service discovery
 
 ### Desktop Services (Rust)
-- **Filesystem**: Browse, read, write, watch desktop directories
+- **Filesystem**: Browse, read, write, watch desktop directories (lazy loading)
 - **Sync**: Bidirectional directory synchronization with conflict resolution
 - **Photo Backup**: Automatic incremental photo backup from phone
 - **Remote Shell**: PTY-based command execution (ConPTY on Windows)
 - **Media Control**: MPRIS (Linux) / Media Session (Windows) integration
-- **Phone FS Access**: Access Android storage via FUSE/Dokan mount
+- **Phone FS Access**: Access Android storage via protocol API (DocumentsProvider)
 - **Proximity**: RSSI-based distance estimation (Near/Far/Out of Range)
 - **File Streaming**: On-demand streaming with range requests
-- **App Launcher**: Launch Android apps from desktop
+- **App Launcher**: Launch Android apps from desktop (Android → Desktop only)
 
 ### Android Services (Kotlin)
 - **Foreground Service**: Persistent Bluetooth connection
 - **DocumentsProvider**: Filesystem integration with system file picker
-- **Notification Listener**: Media control buttons
 - **WorkManager**: Background sync scheduling
 - **Room Database**: Local storage for sessions, jobs, conflicts
 
@@ -160,7 +159,8 @@ backup_interval_hours = 24
 [logging]
 level = "info"
 format = "json"
-file = "logs/bpl.log"
+output = "stdout"
+file_path = "logs/bpl.log"
 max_file_size_mb = 100
 max_files = 10
 
@@ -186,10 +186,8 @@ enabled = true
 [services.photo_backup]
 enabled = false
 auto_backup = true
-only_when_charging = true
+backup_on_connect = true
 organize_by_date = true
-generate_thumbnails = true
-deduplicate = true
 
 [services.shell]
 enabled = true
@@ -203,8 +201,6 @@ enabled = true
 
 [services.phone_fs]
 enabled = true
-mount_point = "/mnt/phone"  # Linux/macOS
-# mount_point = "P:"        # Windows (Dokan)
 
 [services.proximity]
 enabled = true
@@ -229,9 +225,9 @@ Configuration stored in DataStore (`bpl_config.xml`). Managed via app UI or desk
 ### Frame Format
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Magic (4) │ Version (4) │ Type (1) │ Flags (1) │ Channel (4) │
+│ Magic (4) │ Version (4) │ Type (1) │ Flags (1) │ Channel (4)│
 ├─────────────────────────────────────────────────────────────┤
-│ Sequence (8)                                    │ Length (4) │
+│ Sequence (8)                                    │ Length (4)│
 ├─────────────────────────────────────────────────────────────┤
 │ Header CRC32C (4)                                           │
 ├─────────────────────────────────────────────────────────────┤
@@ -242,15 +238,11 @@ Configuration stored in DataStore (`bpl_config.xml`). Managed via app UI or desk
 ```
 
 ### Channel Assignments
-| Channel | Service |
-|---------|---------|
-| 0 | Control (session, auth, capability, channel mgmt) |
-| 1 | Filesystem |
-| 2 | Streaming |
-| 3 | Shell |
-| 4 | Launcher |
-| 5 | Synchronization |
-| 6 | Media Control |
+- **Channel 0**: Control (session, auth, capability, channel mgmt, service registry)
+- **Channel 1-N**: Dynamically assigned via ServiceRegisterRequest/Response
+  - Multiple channels per service allowed
+  - Service ID → Channel mapping stored in registry
+  - No fixed channel-to-service mapping in protocol
 
 ### Session Establishment
 ```
@@ -269,26 +261,6 @@ Configuration stored in DataStore (`bpl_config.xml`). Managed via app UI or desk
 - Per-channel AES-256-GCM keys
 - Mutual authentication with key confirmation
 
-## Development
-
-### Protocol Buffers
-Shared `.proto` files in `proto/` directory. Generate code:
-
-```bash
-# Rust
-cd desktop/protocol && cargo build
-
-# Android (auto via Gradle)
-cd android && ./gradlew generateProto
-```
-
-### Adding a New Service
-1. Define protocol in `proto/<service>.proto`
-2. Implement `Service` trait (Rust) / `Service` interface (Kotlin)
-3. Register in service registry
-4. Assign channel ID
-5. Update capability negotiation
-
 ## Security
 
 - **Transport**: Bluetooth Classic RFCOMM (encrypted at link layer)
@@ -306,20 +278,26 @@ cd android && ./gradlew generateProto
 - **Throughput**: ~2-3 MB/s (Bluetooth Classic 2.1+EDR)
 - **Memory**: <50MB idle, <200MB under load
 
-## Testing
+## Development
+
+### Protocol Buffers
+Shared `.proto` files in `proto/` directory. Generate code:
 
 ```bash
-# Desktop unit tests
-cd desktop && cargo test
+# Rust
+cd desktop/protocol && cargo build
 
-# Android unit tests
-cd android && ./gradlew test
-
-# Android instrumented tests
-cd android && ./gradlew connectedAndroidTest
+# Android (auto via Gradle)
+cd android && ./gradlew generateProto
 ```
+
+### Adding a New Service
+1. Define protocol in `proto/<service>.proto`
+2. Implement `Service` trait (Rust) / `Service` interface (Kotlin)
+3. Register in service registry
+4. Assign channel ID dynamically
+5. Update capability negotiation
 
 ## License
 
-MIT License - see LICENSE file for details."# bitDrive" 
-"# bitDrive" 
+MIT License - see LICENSE file for details.

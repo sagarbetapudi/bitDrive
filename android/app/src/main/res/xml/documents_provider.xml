@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<documents-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:authorities="com.bluetoothpersonallink.documents"
+    android:label="@string/documents_provider_label"
+    android:summary="@string/documents_provider_summary" />

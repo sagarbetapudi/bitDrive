@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package bpl.protocol;
+
+option java_package = "com.bluetoothpersonallink.protocol";
+option java_multiple_files = true;
+option go_package = "github.com/bluetoothpersonallink/protocol/go";
+
+import "common.proto";
+
+/// Proximity service identifier.
+const string PROXIMITY_SERVICE_ID = "bpl.proximity";
+const uint32 PROXIMITY_SERVICE_VERSION = 1;
+
+/// Proximity states.
+enum ProximityState {
+  STATE_UNKNOWN = 0;
+  STATE_NEAR = 1;      // Strong signal, close
+  STATE_FAR = 2;       // Weak signal, far
+  STATE_OUT_OF_RANGE = 3; // No signal
+}
+
+/// Proximity operation types.
+enum ProximityOpType {
+  OP_GET_STATE = 0;
+  OP_SUBSCRIBE = 1;
+  OP_UNSUBSCRIBE = 2;
+  OP_GET_RSSI = 3;
+  OP_SET_POLICY = 4;
+  OP_GET_POLICY = 5;
+}
+
+/// RSSI reading.
+message RssiReading {
+  int32 rssi = 1;              // dBm (typically -100 to -30)
+  Timestamp timestamp = 2;
+  uint32 sample_count = 3;     // Number of samples averaged
+  float avg_rssi = 4;          // Average RSSI
+  float min_rssi = 5;
+  float max_rssi = 6;
+}
+
+/// Proximity state info.
+message ProximityStateInfo {
+  ProximityState state = 1;
+  RssiReading rssi = 2;
+  float distance_estimate = 3; // Meters (rough estimate)
+  float confidence = 4;        // 0.0 - 1.0
+  Timestamp last_update = 5;
+  string source = 6;           // "classic", "le", "hybrid"
+}
+
+/// Proximity policy for automatic actions.
+message ProximityPolicy {
+  struct PolicyRule {
+    ProximityState trigger_state = 1;
+    PolicyAction action = 2;
+    map<string, string> params = 3; // Action-specific params
+  }
+  repeated PolicyRule rules = 1;
+  bool enabled = 2;
+  uint32 poll_interval_ms = 3; // RSSI polling interval
+  int32 near_threshold = 4;    // RSSI threshold for "near"
+  int32 far_threshold = 5;     // RSSI threshold for "far"
+}
+
+/// Policy actions.
+enum PolicyAction {
+  ACTION_NONE = 0;
+  ACTION_CONNECT = 1;          // Initiate connection
+  ACTION_DISCONNECT = 2;       // Disconnect
+  ACTION_START_SYNC = 3;       // Start sync job
+  ACTION_START_BACKUP = 4;     // Start photo backup
+  ACTION_NOTIFY = 5;           // Show notification
+  ACTION_RUN_COMMAND = 6;      // Execute shell command
+  ACTION_CUSTOM = 7;           // Custom action
+}
+
+/// Proximity request.
+message ProximityRequest {
+  ProximityOpType op = 1;
+  uint64 request_id = 2;
+  ProximityPolicy policy = 3;
+}
+
+/// Proximity response.
+message ProximityResponse {
+  uint64 request_id = 1;
+  ResultCode result = 2;
+  string error_message = 3;
+  ProximityStateInfo state = 4;
+  RssiReading rssi = 5;
+  ProximityPolicy policy = 6;
+}
+
+/// Proximity state change event.
+message ProximityEvent {
+  ProximityStateInfo state = 1;
+  ProximityState previous_state = 2;
+  repeated PolicyAction triggered_actions = 3;
+}
+
+/// Proximity capabilities.
+message ProximityCapabilities {
+  bool rssi_monitoring = 1;
+  bool classic_rssi = 2;
+  bool le_rssi = 3;
+  bool distance_estimation = 4;
+  bool auto_reconnect = 5;
+  bool policy_engine = 6;
+  uint32 min_poll_interval_ms = 7;
+  uint32 max_poll_interval_ms = 8;
+}
