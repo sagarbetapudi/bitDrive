@@ -21,6 +21,7 @@ pub struct ConfigManager {
 
 /// Application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
     pub bluetooth: BluetoothConfig,
     pub database: DatabaseConfig,
