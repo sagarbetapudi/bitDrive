@@ -26,4 +26,3 @@ bpl-protocol = { path = "../protocol" }
 bpl-core = { path = "../core" }
 bpl-bluetooth = { path = "../bluetooth" }
 bpl-daemon = { path = "../daemon" }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }

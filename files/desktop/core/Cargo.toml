@@ -1,0 +1,45 @@
+[package]
+name = "bpl-core"
+version = { workspace = true }
+edition = { workspace = true }
+description = "Core services for BPL Desktop"
+publish = false
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "sync", "time"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = { workspace = true }
+bincode = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde", "fast-rng"] }
+parking_lot = { workspace = true }
+config = { workspace = true }
+
+# Filesystem
+notify = { workspace = true }
+walkdir = { workspace = true }
+tempfile = { workspace = true }
+
+# Database
+rusqlite = { workspace = true }
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
+
+# Protocol
+bpl-protocol = { path = "../protocol" }
+bpl-bluetooth = { path = "../bluetooth" }
+
+# Utilities
+async-trait = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }

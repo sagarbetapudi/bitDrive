@@ -2,10 +2,12 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
-use tracing::{error, info};
+use tokio::sync::mpsc;
+use tracing::{debug, error, info, warn};
 
 use bpl_protocol::{
         DeviceId, SessionId, ChannelId, NegotiatedCapability,
@@ -115,7 +117,29 @@ pub trait Service: Send + Sync {
     async fn stop(&mut self) -> Result<()>;
 
     /// Handle incoming request from protocol
-    async fn handle_request(&mut self, request: ServiceRequest) -> Result<ServiceResponse>;
+    /// Handle request by routing to appropriate service
+    pub async fn handle_request(&self, request: ServiceRequest) -> Result<ServiceResponse> {
+        let service_id = request.service_id.clone();
+        let request_id = request.request_id;
+
+        // Remove the service so no lock is held across .await
+        let service = self.services.write().remove(&service_id);
+
+        if let Some(mut service) = service {
+            let result = service.handle_request(request).await;
+
+            // Always put the service back
+            self.services.write().insert(service_id, service);
+
+            result
+        } else {
+            Ok(ServiceResponse::error(
+                request_id,
+                ResultCode::ErrorNotFound as i32,
+                format!("Service not found: {}", service_id),
+            ))
+        }
+    }
 
     /// Handle event from event bus
     async fn handle_event(&mut self, event: ServiceEvent) -> Result<()>;
@@ -235,7 +259,7 @@ impl ServiceManager {
     }
 
     /// Register a service
-    pub fn register_service(&self, service: Box<dyn Service>) -> Result<()> {
+    pub fn register_service(&self, mut service: Box<dyn Service>) -> Result<()> {
         let service_id = service.service_id().to_string();
 
         if self.services.read().contains_key(&service_id) {
@@ -258,7 +282,7 @@ impl ServiceManager {
     }
 
     /// Get service by ID
-    pub fn get_service(&self, _service_id: &str) -> Option<Box<dyn Service>> {
+    pub fn get_service(&self, service_id: &str) -> Option<Box<dyn Service>> {
         // Can't easily return Box<dyn Service> from Arc<RwLock<HashMap>>
         // This would need a different design. For now, use handle_request directly.
         None
@@ -319,33 +343,26 @@ impl ServiceManager {
         Ok(())
     }
 
-    /// Handle request by routing to appropriate service.
-    ///
-    /// The service is temporarily removed from the map so a parking_lot lock
-    /// is never held across an `.await`.
+    /// Handle request by routing to appropriate service
     pub async fn handle_request(&self, request: ServiceRequest) -> Result<ServiceResponse> {
-        let service_id = request.service_id.clone();
-        let request_id = request.request_id;
+        let services = self.services.read();
 
-        let service = self.services.write().remove(&service_id);
-
-        if let Some(mut service) = service {
-            let result = service.handle_request(request).await;
-            self.services.write().insert(service_id, service);
-            result
+        if let Some(service) = services.get(&request.service_id) {
+            service.handle_request(request).await
         } else {
+            let service_id = request.service_id.clone();
+
             Ok(ServiceResponse::error(
-                request_id,
+                request.request_id,
                 ResultCode::ErrorNotFound as i32,
                 format!("Service not found: {}", service_id),
             ))
         }
     }
 
-    /// Broadcast event to all services.
-    ///
-    /// Services are temporarily removed so no synchronous lock is held across `.await`.
-    pub async fn broadcast_event(&self, event: ServiceEvent) -> Result<()> {
+    /// Broadcast event to all services
+    /// Broadcast event to all services
+pub async fn broadcast_event(&self, event: ServiceEvent) -> Result<()> {
     let service_ids: Vec<String> =
         self.services.read().keys().cloned().collect();
 
@@ -362,8 +379,8 @@ impl ServiceManager {
         }
     }
 
-        Ok(())
-    }
+    Ok(())
+}
 
     /// List all registered services
     pub fn list_services(&self) -> Vec<String> {

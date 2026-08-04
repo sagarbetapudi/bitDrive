@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package bpl.protocol;
+
+option java_package = "com.bluetoothpersonallink.protocol";
+option java_multiple_files = true;
+option go_package = "github.com/bluetoothpersonallink/protocol/go";
+
+/// Common types shared across all protocol messages.
+
+/// Protocol version for version negotiation.
+message ProtocolVersion {
+  uint32 major = 1;
+  uint32 minor = 2;
+  uint32 patch = 3;
+}
+
+/// Unique identifier for a device (Bluetooth MAC address or generated UUID).
+message DeviceId {
+  bytes value = 1; // 6 bytes for MAC, 16 bytes for UUID
+}
+
+/// Unique session identifier.
+message SessionId {
+  bytes value = 1; // 16 bytes random
+}
+
+/// Logical channel identifier (0 = control channel, 1-255 = data channels).
+message ChannelId {
+  uint32 value = 1;
+}
+
+/// Sequence number for packet ordering and replay protection.
+message SequenceNumber {
+  uint64 value = 1;
+}
+
+/// Timestamp in milliseconds since Unix epoch.
+message Timestamp {
+  int64 value = 1;
+}
+
+/// Result codes for operations.
+enum ResultCode {
+  SUCCESS = 0;
+  ERROR_GENERIC = 1;
+  ERROR_INVALID_ARGUMENT = 2;
+  ERROR_NOT_FOUND = 3;
+  ERROR_PERMISSION_DENIED = 4;
+  ERROR_NOT_CONNECTED = 5;
+  ERROR_SESSION_CLOSED = 6;
+  ERROR_CHANNEL_CLOSED = 7;
+  ERROR_AUTH_FAILED = 8;
+  ERROR_CAPABILITY_MISMATCH = 9;
+  ERROR_PROTOCOL_VERSION = 10;
+  ERROR_SEQUENCE_MISMATCH = 11;
+  ERROR_REPLAY_DETECTED = 12;
+  ERROR_DECRYPTION_FAILED = 13;
+  ERROR_BUFFER_TOO_SMALL = 14;
+  ERROR_TIMEOUT = 15;
+  ERROR_CANCELLED = 16;
+  ERROR_BUSY = 17;
+  ERROR_UNSUPPORTED = 18;
+  ERROR_CONFLICT = 19;
+  ERROR_QUOTA_EXCEEDED = 20;
+  ERROR_IO = 21;
+}
+
+/// Standard result message for request/response patterns.
+message Result {
+  ResultCode code = 1;
+  string message = 2;
+  bytes details = 3; // Optional protocol-specific details
+}
+
+/// File metadata for filesystem operations.
+message FileMetadata {
+  string path = 1;           // Relative path from service root
+  string name = 2;           // File/directory name
+  uint64 size = 3;           // Size in bytes (0 for directories)
+  bool is_directory = 4;     // True if directory
+  uint64 modified_time = 5;  // Unix timestamp milliseconds
+  uint64 created_time = 6;   // Unix timestamp milliseconds
+  string mime_type = 7;      // MIME type if known
+  string hash = 8;           // Blake3 hash for files (hex encoded)
+  uint32 permissions = 9;    // POSIX permissions (mode_t)
+  string owner = 10;         // Owner name
+  string group = 11;         // Group name
+  bool is_symlink = 12;      // True if symlink
+  string symlink_target = 13; // Target path if symlink
+  map<string, string> extended_attributes = 14; // Extended attributes
+}
+
+/// Directory entry for listing operations.
+message DirectoryEntry {
+  FileMetadata metadata = 1;
+}
+
+/// Range request for streaming/partial reads.
+message ByteRange {
+  uint64 offset = 1;
+  uint64 length = 2; // 0 = to end
+}
+
+/// Service capability descriptor.
+message ServiceCapability {
+  string service_id = 1;        // Unique service identifier (e.g., "bpl.filesystem")
+  uint32 version = 2;           // Service protocol version
+  string name = 3;              // Human-readable name
+  string description = 4;       // Description
+  bool required = 5;            // Whether this service is required for basic operation
+  map<string, string> metadata = 6; // Additional metadata
+  uint64 feature_flags = 7;     // Bitmask of feature flags
+}
+
+/// Error detail for protocol errors.
+message ErrorDetail {
+  ResultCode code = 1;
+  string message = 2;
+  string service_id = 3;       // Service that generated the error
+  string operation = 4;        // Operation that failed
+  map<string, string> context = 5; // Additional context
+}
+
+/// Keepalive configuration.
+message KeepAliveConfig {
+  uint32 interval_ms = 1;      // Keepalive interval in milliseconds
+  uint32 timeout_ms = 2;       // Timeout before considering connection dead
+  uint32 max_missed = 3;       // Max missed keepalives before disconnect
+}
+
+/// Flow control window update.
+message WindowUpdate {
+  ChannelId channel_id = 1;
+  uint32 window_size = 2;      // Number of bytes/frames receiver can accept
+}

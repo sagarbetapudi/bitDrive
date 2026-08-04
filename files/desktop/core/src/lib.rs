@@ -48,7 +48,13 @@ impl Core {
 
     /// Initialize all services
     pub async fn init(&mut self) -> Result<()> {
-        self.services.init_all().await
+        // Run database migrations
+        self.database.migrate().await?;
+
+        // Initialize services
+        self.services.init_all().await?;
+
+        Ok(())
     }
 
     /// Start all services

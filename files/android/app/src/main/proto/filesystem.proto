@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package bpl.protocol;
+
+option java_package = "com.bluetoothpersonallink.protocol";
+option java_multiple_files = true;
+option go_package = "github.com/bluetoothpersonallink/protocol/go";
+
+import "common.proto";
+
+/// Filesystem service identifier constants are defined in Rust:
+/// pub const FILESYSTEM_SERVICE_ID: &str = "bpl.filesystem";
+/// pub const FILESYSTEM_SERVICE_VERSION: u32 = 1;
+
+/// Filesystem operation types.
+enum FsOpType {
+  FS_OP_LIST = 0;               // List directory
+  FS_OP_STAT = 1;               // Get file/dir metadata
+  FS_OP_READ = 2;               // Read file
+  FS_OP_WRITE = 3;              // Write file
+  FS_OP_CREATE = 4;             // Create file
+  FS_OP_DELETE = 5;             // Delete file/dir
+  FS_OP_MOVE = 6;               // Move/rename
+  FS_OP_COPY = 7;               // Copy file/dir
+  FS_OP_MKDIR = 8;              // Create directory
+  FS_OP_RMDIR = 9;              // Remove directory
+  FS_OP_WATCH = 10;             // Watch for changes
+  FS_OP_UNWATCH = 11;           // Stop watching
+  FS_OP_SEARCH = 12;            // Search files
+  FS_OP_HASH = 13;              // Compute file hash
+  FS_OP_GET_CAPS = 14;          // Get capabilities
+  FS_OP_SET_ATTR = 15;          // Set attributes (permissions, times)
+  FS_OP_SYMLINK = 16;           // Create symlink
+  FS_OP_READLINK = 17;          // Read symlink target
+  FS_OP_STREAM_OPEN = 18;       // Open stream for streaming
+  FS_OP_STREAM_READ = 19;       // Read from stream
+  FS_OP_STREAM_CLOSE = 20;      // Close stream
+}
+
+/// Filesystem request.
+message FsRequest {
+  FsOpType op = 1;
+  uint64 request_id = 2;
+  string path = 3;              // Target path
+  string destination = 4;       // For move/copy
+  ByteRange range = 5;          // For partial read
+  bytes data = 6;               // For write/create
+  FileMetadata metadata = 7;    // For create/set_attr
+  uint32 flags = 8;             // Operation flags
+  string hash_algorithm = 9;    // For hash op
+  StreamConfig stream_config = 10; // For stream ops
+  string query = 11;            // For search
+  WatchConfig watch = 12;       // For watch
+  string symlink_target = 13;   // For symlink
+}
+
+/// Operation flags.
+enum FsFlags {
+  FLAG_NONE = 0;
+  FLAG_CREATE_PARENTS = 1;     // Create parent dirs
+  FLAG_OVERWRITE = 2;          // Overwrite existing
+  FLAG_RECURSIVE = 4;          // Recursive operation
+  FLAG_FOLLOW_SYMLINKS = 8;    // Follow symlinks
+  FLAG_NO_FOLLOW_SYMLINKS = 16; // Don't follow symlinks
+  FLAG_ATOMIC = 32;            // Atomic write (temp + rename)
+  FLAG_APPEND = 64;            // Append to file
+  FLAG_SYNC = 128;             // Sync to disk
+  FLAG_DIRECTORY = 256;        // Target is directory
+  FLAG_FILE = 512;             // Target is file
+}
+
+/// Stream configuration.
+message StreamConfig {
+  uint32 buffer_size = 1;        // Read buffer size
+  bool sequential = 2;           // Sequential access hint
+  uint32 prefetch_count = 3;     // Number of chunks to prefetch
+  uint32 chunk_size = 4;         // Chunk size for streaming
+}
+
+/// Watch configuration.
+message WatchConfig {
+  bool recursive = 1;
+  uint32 event_mask = 2;         // Bitmask of WatchEventType
+  bool include_metadata = 3;
+}
+
+/// Watch event types.
+enum WatchEventType {
+  EVENT_UNSPECIFIED = 0;
+  EVENT_CREATED = 1;
+  EVENT_MODIFIED = 2;
+  EVENT_DELETED = 4;
+  EVENT_RENAMED = 8;
+  EVENT_ATTRIBUTES = 16;
+  EVENT_ALL = 31;
+}
+
+/// Stream handle for streaming operations.
+message StreamHandle {
+  uint64 handle = 1;
+  string path = 2;
+  uint64 size = 3;
+  uint32 chunk_size = 4;
+  uint64 position = 5;
+}
+
+/// Filesystem response.
+message FsResponse {
+  uint64 request_id = 1;
+  ResultCode result = 2;
+  string error_message = 3;
+  repeated DirectoryEntry entries = 4;  // For LIST
+  FileMetadata metadata = 5;            // For STAT
+  bytes data = 6;                       // For READ
+  uint64 bytes_written = 7;             // For WRITE
+  string hash = 8;                      // For HASH
+  StreamHandle stream_handle = 9;       // For STREAM_OPEN
+  repeated FileMatch matches = 10;      // For SEARCH
+  FsCapabilities capabilities = 11;     // For GET_CAPS
+  string symlink_target = 12;           // For READLINK
+}
+
+/// File match for search.
+message FileMatch {
+  FileMetadata metadata = 1;
+  float score = 2;               // Relevance score
+  repeated string matched_terms = 3;
+}
+
+/// Filesystem event (for watching).
+message FsEvent {
+  WatchEventType type = 1;
+  string path = 2;
+  string old_path = 3;           // For RENAMED
+  FileMetadata metadata = 4;
+  uint64 timestamp = 5;
+}
+
+/// Filesystem capabilities.
+message FsCapabilities {
+  bool lazy_listing = 1;
+  bool file_watching = 2;
+  bool symlinks = 3;
+  bool extended_attrs = 4;
+  bool case_sensitive = 5;
+  uint32 max_path_length = 6;
+  repeated string hash_algorithms = 7; // "blake3", "sha256", "md5"
+  uint64 max_file_size = 8;
+  bool streaming = 9;
+  uint32 max_streams = 10;
+  uint32 max_chunk_size = 11;
+}

@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Bluetooth Personal Link</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="connecting">Connecting…</string>
+    <string name="pair_new_device">Pair new device</string>
+    <string name="device_paired">Device paired successfully</string>
+    <string name="device_unpaired">Device unpaired</string>
+    <string name="pairing_failed">Pairing failed</string>
+    <string name="settings_title">Settings</string>
+    <string name="documents_provider_label">Bluetooth Personal Link</string>
+    <string name="documents_provider_summary">Access desktop files via Bluetooth</string>
+    <string name="service_notification_title">Bluetooth Personal Link</string>
+    <string name="service_notification_connected">Connected to desktop</string>
+    <string name="service_notification_disconnected">Waiting for desktop…</string>
+    <string name="auto_connect">Auto connect</string>
+    <string name="auto_connect_summary">Automatically connect when in range</string>
+    <string name="log_level">Log level</string>
+    <string name="log_level_summary">Set logging verbosity</string>
+    <string name="device_name">Device name</string>
+    <string name="device_name_summary">Name shown to other devices</string>
+    <string name="psk_management">Security (PSK)</string>
+    <string name="psk_management_summary">Manage pre-shared keys</string>
+    <string name="generate_psk">Generate new PSK</string>
+    <string name="clear_psk">Clear PSK</string>
+    <string name="about">About</string>
+    <string name="version">Version %s</string>
+</resources>

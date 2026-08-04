@@ -2,13 +2,14 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use config::{Config, File, FileFormat, Environment};
 use parking_lot::RwLock;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
-use tracing::info;
+use tracing::{debug, info, warn};
 
 use bpl_protocol::{DeviceId, ProtocolError, Result};
 
@@ -211,17 +212,11 @@ impl ConfigManager {
 
     /// Load configuration from specific path
     pub async fn load_from_path<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
-        let config_path = path.as_ref().to_path_buf();
+    let config_path = path.as_ref().to_path_buf();
 
-        if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .map_err(|e| ProtocolError::Config(e.to_string()))?;
-        }
+    let mut builder = Config::builder();
 
-        let mut builder = Config::builder();
-
-        if config_path.exists() {
+    if config_path.exists() {
         builder = builder.add_source(
             File::new(
                 config_path.to_string_lossy().as_ref(),
@@ -230,29 +225,29 @@ impl ConfigManager {
         );
     }
 
-        builder = builder.add_source(
+    builder = builder.add_source(
         Environment::with_prefix("BPL").separator("__")
     );
 
-        let config = builder
+    let config = builder
         .build()
         .map_err(|e| ProtocolError::Config(e.to_string()))?;
 
-        let app_config: AppConfig = config
+    let app_config: AppConfig = config
         .try_deserialize()
         .map_err(|e| ProtocolError::Config(e.to_string()))?;
 
-        let manager = Self {
+    let manager = Self {
         config: Arc::new(RwLock::new(app_config)),
         config_path,
     };
 
-        if !manager.config_path.exists() {
+    if !manager.config_path.exists() {
         manager.save().await?;
     }
 
-        Ok(manager)
-    }
+    Ok(manager)
+}
 
     /// Get config directory
     pub fn config_dir() -> Result<PathBuf> {

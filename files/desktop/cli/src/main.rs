@@ -361,90 +361,35 @@ async fn cmd_stop_service(service: String) -> Result<()> {
 }
 
 /// Config management
-/// Config management
 async fn cmd_config(action: ConfigAction) -> Result<()> {
     let config = ConfigManager::load().await?;
 
     match action {
         ConfigAction::Get { key } => {
-            let cfg = config.get();
-
-            // Serialize the current configuration so nested keys can
-            // eventually be supported without coupling the CLI to every
-            // AppConfig field.
-            let value = serde_json::to_value(&cfg)
-                .map_err(|e| anyhow::anyhow!("Failed to serialize config: {}", e))?;
-
-            match get_json_value(&value, &key) {
-                Some(value) => {
-                    println!("{} = {}", key, format_json_value(value));
-                }
-                None => {
-                    println!("Key '{}' not found", key);
-                }
+            if let Some(value) = config.get_config(&key)? {
+                println!("{} = {}", key, value);
+            } else {
+                println!("Key '{}' not found", key);
             }
         }
-
         ConfigAction::Set { key, value } => {
-            println!(
-                "Setting configuration values from the CLI is not yet implemented."
-            );
-            println!("Requested: {} = {}", key, value);
+            config.set_config(&key, &value, None, false, false)?;
+            println!("Set {} = {}", key, value);
         }
-
         ConfigAction::List => {
-            let cfg = config.get();
-
-            let value = serde_json::to_value(&cfg)
-                .map_err(|e| anyhow::anyhow!("Failed to serialize config: {}", e))?;
-
-            match value {
-                serde_json::Value::Object(map) => {
-                    for (key, value) in map {
-                        println!("{} = {}", key, format_json_value(&value));
-                    }
-                }
-                _ => {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&value)?
-                    );
-                }
+            let configs = config.list_config()?;
+            for c in configs {
+                let secret = if c.secret { " [SECRET]" } else { "" };
+                let readonly = if c.read_only { " [READONLY]" } else { "" };
+                println!("{} = {}{}{}", c.key, c.value, secret, readonly);
             }
         }
-
         ConfigAction::Reset => {
             println!("Config reset not yet implemented");
         }
     }
 
     Ok(())
-}
-
-/// Resolve a dotted configuration key.
-///
-/// Example:
-///     bluetooth.enabled
-///     logging.level
-fn get_json_value<'a>(
-    value: &'a serde_json::Value,
-    key: &str,
-) -> Option<&'a serde_json::Value> {
-    let mut current = value;
-
-    for part in key.split('.') {
-        current = current.get(part)?;
-    }
-
-    Some(current)
-}
-
-/// Format JSON values cleanly for CLI output.
-fn format_json_value(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::String(s) => s.clone(),
-        _ => value.to_string(),
-    }
 }
 
 /// Remote shell

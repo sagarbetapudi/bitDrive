@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package bpl.protocol;
+
+option java_package = "com.bluetoothpersonallink.protocol";
+option java_multiple_files = true;
+option go_package = "github.com/bluetoothpersonallink/protocol/go";
+
+import "common.proto";
+
+/// Photo backup service identifier constants are defined in Rust:
+/// pub const PHOTO_BACKUP_SERVICE_ID: &str = "bpl.photo_backup";
+/// pub const PHOTO_BACKUP_SERVICE_VERSION: u32 = 1;
+
+/// Photo backup operation types.
+enum PhotoBackupOpType {
+  PHOTO_BACKUP_OP_START_BACKUP = 0;
+  PHOTO_BACKUP_OP_STOP_BACKUP = 1;
+  PHOTO_BACKUP_OP_GET_STATUS = 2;
+  PHOTO_BACKUP_OP_GET_PROGRESS = 3;
+  PHOTO_BACKUP_OP_LIST_ALBUMS = 4;
+  PHOTO_BACKUP_OP_GET_ALBUM = 5;
+  PHOTO_BACKUP_OP_GET_PHOTO = 6;
+  PHOTO_BACKUP_OP_SCAN_PHOTOS = 7;
+  PHOTO_BACKUP_OP_CONFIGURE = 8;
+}
+
+/// Photo metadata.
+message PhotoMetadata {
+  string photo_id = 1;           // Unique identifier
+  string filename = 2;           // Original filename
+  string path = 3;               // Path on device
+  uint64 size = 4;               // File size in bytes
+  string mime_type = 5;          // image/jpeg, image/heic, etc.
+  uint64 created_time = 6;       // Unix timestamp (ms)
+  uint64 modified_time = 7;      // Unix timestamp (ms)
+  uint32 width = 8;              // Image width
+  uint32 height = 9;             // Image height
+  string hash = 10;              // Blake3 hash (hex)
+  map<string, string> exif = 11; // EXIF data
+  Location location = 12;        // GPS location
+  repeated string albums = 13;   // Album names
+  bool is_favorite = 14;
+  bool is_trashed = 15;
+}
+
+/// GPS location.
+message Location {
+  double latitude = 1;
+  double longitude = 2;
+  double altitude = 3;
+  uint64 timestamp = 4;
+}
+
+/// Album metadata.
+message AlbumMetadata {
+  string album_id = 1;
+  string name = 2;
+  string description = 3;
+  uint64 photo_count = 4;
+  uint64 created_time = 5;
+  uint64 modified_time = 6;
+  string cover_photo_id = 7;
+  bool is_system = 8; // Camera roll, screenshots, etc.
+}
+
+/// Photo backup configuration.
+message PhotoBackupConfig {
+  bool enabled = 1;
+  bool auto_backup = 2;
+  bool backup_on_connect = 3;
+  repeated string source_albums = 4; // Empty = all albums
+  string destination_path = 5;   // On desktop
+  bool organize_by_date = 6;     // Create YYYY/MM/DD folders
+}
+
+/// Photo backup status.
+message PhotoBackupStatus {
+  enum State {
+    STATE_IDLE = 0;
+    STATE_SCANNING = 1;
+    STATE_BACKING_UP = 2;
+    STATE_PAUSED = 3;
+    STATE_ERROR = 4;
+    STATE_COMPLETE = 5;
+  }
+  State state = 1;
+  uint64 total_photos = 2;
+  uint64 backed_up = 3;
+  uint64 skipped = 4;
+  uint64 errors = 5;
+  uint64 bytes_total = 6;
+  uint64 bytes_transferred = 7;
+  string current_photo = 8;
+  string error_message = 9;
+  uint64 start_time = 10;
+  uint64 estimated_completion = 11;
+  uint64 last_completed = 12;
+}
+
+/// Photo backup request.
+message PhotoBackupRequest {
+  PhotoBackupOpType op = 1;
+  uint64 request_id = 2;
+  PhotoBackupConfig config = 3;
+  string photo_id = 4;
+  string album_id = 5;
+  ByteRange range = 6;           // For partial photo download
+}
+
+/// Photo backup response.
+message PhotoBackupResponse {
+  uint64 request_id = 1;
+  ResultCode result = 2;
+  string error_message = 3;
+  PhotoBackupStatus status = 4;
+  repeated AlbumMetadata albums = 5;
+  repeated PhotoMetadata photos = 6;
+  PhotoMetadata photo = 7;
+  bytes photo_data = 8;          // Photo bytes
+  PhotoBackupConfig config = 9;
+}
+
+/// Photo backup progress event.
+message PhotoBackupProgress {
+  uint64 photos_processed = 1;
+  uint64 photos_total = 2;
+  uint64 bytes_transferred = 3;
+  uint64 bytes_total = 4;
+  string current_photo = 5;
+  PhotoMetadata current_metadata = 6;
+}
