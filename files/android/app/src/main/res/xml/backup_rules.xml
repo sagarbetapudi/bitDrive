@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<full-backup-content>
-    <include domain="database" path="bpl.db" />
-    <include domain="sharedpref" path="bpl_config.xml" />
-    <exclude domain="file" path="cache" />
-    <exclude domain="file" path="logs" />
-</full-backup-content>
