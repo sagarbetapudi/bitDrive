@@ -8,16 +8,8 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 
-/// Service capability descriptors with feature flags.
-message ServiceCapability {
-  string service_id = 1;
-  uint32 version = 2;
-  string name = 3;
-  string description = 4;
-  bool required = 5;
-  map<string, string> metadata = 6;
-  uint64 feature_flags = 7; // Bitmask of feature flags
-}
+/// Service capability descriptors with feature flags are defined in common.proto.
+
 
 /// Feature flags for each service (bit positions).
 /// Filesystem service features
@@ -141,4 +133,41 @@ message ServiceVersion {
   uint32 min_version = 2;
   uint32 max_version = 3;
   uint32 preferred_version = 4;
+}
+
+/// Capability set containing supported capabilities.
+message CapabilitySet {
+  repeated ServiceCapability capabilities = 1;
+  ProtocolVersion protocol_version = 2;
+  string software_version = 3;
+  string device_name = 4;
+  DeviceId device_id = 5;
+}
+
+/// Individual capability advertisement.
+message CapabilityAdvertisement {
+  string service_id = 1;
+  uint32 min_version = 2;
+  uint32 max_version = 3;
+  uint32 preferred_version = 4;
+  map<string, string> features = 5;
+  bool required = 6;
+}
+
+/// Negotiated capability result.
+message NegotiatedCapability {
+  string service_id = 1;
+  uint32 negotiated_version = 2;
+  map<string, string> negotiated_features = 3;
+  bool available = 4;
+  string unavailable_reason = 5;
+}
+
+/// Version compatibility info.
+message VersionCompatibility {
+  string service_id = 1;
+  uint32 local_version = 2;
+  uint32 remote_version = 3;
+  bool compatible = 4;
+  string incompatibility_reason = 5;
 }

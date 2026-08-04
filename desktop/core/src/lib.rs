@@ -1,4 +1,4 @@
-//! Core services for the BPL Desktop application
+//! Core services for the BPL Desktop application  core/src/lib.rs
 //!
 //! Provides configuration management, database layer, service framework,
 //! and event bus for inter-service communication.
@@ -13,7 +13,7 @@ pub use database::{Database, DatabasePool};
 pub use service::{ServiceManager, ServiceContext, Service, ServiceConfig};
 pub use events::{EventBus, Event};
 
-use bpl_protocol::{DeviceId, SessionId, ProtocolError, Result};
+use bpl_protocol::{DeviceId, Result};
 
 /// Core application state
 pub struct Core {
@@ -28,11 +28,13 @@ impl Core {
     /// Create new core instance
     pub async fn new() -> Result<Self> {
         let config = ConfigManager::load().await?;
-        let database = Database::new(&config.database.path).await?;
+
+        let app_config = config.get();
+        let database = Database::new(&app_config.database.path).await?;
+
         let events = EventBus::new();
         let services = ServiceManager::new(events.clone());
 
-        // Generate device ID if not exists
         let device_id = config.get_or_create_device_id().await?;
 
         Ok(Self {

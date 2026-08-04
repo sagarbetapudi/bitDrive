@@ -19,6 +19,7 @@ parking_lot = { workspace = true }
 
 # Bluetooth (Windows)
 windows = { workspace = true }
+async-trait = { workspace = true }
 
 # Protocol
 bpl-protocol = { path = "../protocol" }

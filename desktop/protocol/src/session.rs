@@ -16,14 +16,13 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     pb::{
-        CapabilityNegotiateRequest, CapabilityNegotiateResponse, DeviceId,
+        CapabilityNegotiateRequest, CapabilityNegotiateResponse, CapabilitySet, DeviceId,
         KeepAlive, NegotiatedCapability, ProtocolVersion, ResultCode, SessionCloseRequest,
-        SessionConfig, SessionEvent, SessionEventType, SessionId, SessionOpenRequest,
-        SessionOpenResponse, SessionState,
+        SessionEventType, SessionId, SessionOpenRequest, SessionOpenResponse,
     },
-    capability::{CapabilityNegotiator, CapabilitySet, NegotiatedCapability as CapNegotiatedCapability, ServiceCapability},
-    auth::{AuthManager, AuthMethod, SessionKeys},
-    mux::{ChannelManager, ChannelConfig, ChannelType},
+    capability::CapabilityNegotiator,
+    auth::{AuthManager, SessionKeys},
+    mux::ChannelManager,
     registry::ServiceRegistry,
     error::{ProtocolError, Result},
     frame::FrameCodec,
@@ -61,8 +60,8 @@ impl Default for SessionConfig {
             capability_versions: HashMap::new(),
             max_channels: MAX_CHANNELS,
             max_frame_size: 16384,
-            keepalive_interval: Duration::from_millis(DEFAULT_KEEPALIVE_INTERVAL_MS),
-            session_timeout: Duration::from_millis(DEFAULT_SESSION_TIMEOUT_MS),
+            keepalive_interval: Duration::from_millis(DEFAULT_KEEPALIVE_INTERVAL_MS as u64),
+            session_timeout: Duration::from_millis(DEFAULT_SESSION_TIMEOUT_MS as u64),
             session_keys: SessionKeys::default(),
             established_at: Instant::now(),
             last_activity: Instant::now(),
@@ -113,8 +112,8 @@ impl Default for SessionManagerConfig {
     fn default() -> Self {
         Self {
             max_sessions: 1, // Single trusted device pair
-            session_timeout: Duration::from_millis(DEFAULT_SESSION_TIMEOUT_MS),
-            keepalive_interval: Duration::from_millis(DEFAULT_KEEPALIVE_INTERVAL_MS),
+            session_timeout: Duration::from_millis(DEFAULT_SESSION_TIMEOUT_MS as u64),
+            keepalive_interval: Duration::from_millis(DEFAULT_KEEPALIVE_INTERVAL_MS as u64),
             enable_reconnection: true,
         }
     }
@@ -132,6 +131,7 @@ pub struct Session {
     keepalive_handle: RwLock<Option<tokio::task::JoinHandle<()>>>,
     rx_sequence: RwLock<u64>,
     tx_sequence: RwLock<u64>,
+    last_activity: RwLock<Instant>,
 }
 
 impl SessionManager {
@@ -184,7 +184,7 @@ impl SessionManager {
         // Send session opened event
         let _ = self.event_tx.send(SessionEvent {
             session_id: session_id.clone(),
-            event_type: SessionEventType::SessionOpened,
+            event_type: SessionEventType::SessionEventOpened,
             timestamp: Instant::now(),
             message: "Session opened".to_string(),
             details: Bytes::new(),
@@ -233,6 +233,7 @@ impl Session {
             keepalive_handle: RwLock::new(None),
             rx_sequence: RwLock::new(0),
             tx_sequence: RwLock::new(0),
+            last_activity: RwLock::new(Instant::now()),
         })
     }
 
@@ -291,17 +292,17 @@ impl Session {
 
     /// Update last activity timestamp
     pub fn touch(&self) {
-        self.config.last_activity = Instant::now();
+        *self.last_activity.write() = Instant::now();
     }
 
     /// Check if session is alive
     pub fn is_alive(&self) -> bool {
-        self.config.last_activity.elapsed() < self.config.session_timeout
+        self.last_activity.read().elapsed() < self.config.session_timeout
     }
 
     /// Start keepalive task
-    pub async fn start_keepalive(&self) {
-        let session = self.clone_for_keepalive();
+    pub async fn start_keepalive(self: &Arc<Self>) {
+        let session = Arc::clone(self);
         let handle = tokio::spawn(async move {
             session.keepalive_loop().await;
         });
@@ -312,15 +313,6 @@ impl Session {
     pub async fn stop_keepalive(&self) {
         if let Some(handle) = self.keepalive_handle.write().take() {
             handle.abort();
-        }
-    }
-
-    /// Clone minimal data for keepalive loop
-    fn clone_for_keepalive(&self) -> KeepaliveSession {
-        KeepaliveSession {
-            config: self.config.clone(),
-            state: self.state.clone(),
-            event_tx: self.event_tx.clone(),
         }
     }
 
@@ -342,7 +334,7 @@ impl Session {
             if !self.is_alive() {
                 missed += 1;
                 if missed >= MAX_MISSED {
-                    warn!("Session {} keepalive timeout", hex::encode(&self.config.session_id.value));
+                    warn!("Session {:?} keepalive timeout", self.config.session_id);
                     self.handle_timeout().await;
                     break;
                 }
@@ -371,7 +363,7 @@ impl Session {
             .as_millis() as u64;
 
         // Build keepalive frame (would be sent via transport)
-        debug!("Sending keepalive for session {}", hex::encode(&self.config.session_id.value));
+        debug!("Sending keepalive for session {:?}", self.config.session_id);
         Ok(())
     }
 
@@ -380,7 +372,7 @@ impl Session {
         self.set_state(SessionState::Closing);
         let _ = self.event_tx.send(SessionEvent {
             session_id: self.config.session_id.clone(),
-            event_type: SessionEventType::KeepaliveTimeout,
+            event_type: SessionEventType::SessionEventKeepaliveTimeout,
             timestamp: Instant::now(),
             message: "Keepalive timeout".to_string(),
             details: Bytes::new(),
@@ -400,23 +392,13 @@ impl Session {
 
         let _ = self.event_tx.send(SessionEvent {
             session_id: self.config.session_id.clone(),
-            event_type: SessionEventType::SessionClosed,
+            event_type: SessionEventType::SessionEventClosed,
             timestamp: Instant::now(),
             message,
             details: Bytes::new(),
         });
     }
 }
-
-/// Minimal session data for keepalive
-struct KeepaliveSession {
-    config: SessionConfig,
-    state: RwLock<SessionState>,
-    event_tx: broadcast::Sender<SessionEvent>,
-}
-
-/// Session event types (re-export from proto)
-pub use crate::pb::SessionEventType;
 
 #[cfg(test)]
 mod tests {

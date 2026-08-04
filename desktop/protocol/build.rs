@@ -25,7 +25,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let includes = [proto_dir.clone()];
 
+    std::fs::create_dir_all("src/pb")?;
+
     prost_build::Config::new()
+        .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
+        .type_attribute("bpl.protocol.SessionId", "#[derive(Eq, Hash)]")
+        .type_attribute("bpl.protocol.DeviceId", "#[derive(Eq, Hash)]")
+        .type_attribute("bpl.protocol.ChannelId", "#[derive(Eq, Hash)]")
+        .type_attribute("bpl.protocol.SequenceNumber", "#[derive(Eq, Hash)]")
+        .type_attribute("bpl.protocol.Timestamp", "#[derive(Eq, Hash)]")
         .out_dir("src/pb")
         .compile_protos(
             &protos.iter().map(|p| proto_dir.join(p)).collect::<Vec<_>>(),

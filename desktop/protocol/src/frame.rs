@@ -19,7 +19,7 @@ use crate::{
         ServiceDiscoverRequest, ServiceDiscoverResponse, ErrorFrame,
     },
     error::{ProtocolError, Result},
-    MAGIC_NUMBER, MAX_FRAME_PAYLOAD_SIZE,
+    MAGIC_NUMBER, DEFAULT_MAX_FRAME_SIZE, CONTROL_CHANNEL_ID, MAX_FRAME_PAYLOAD_SIZE,
 };
 
 /// Frame with header and payload
@@ -32,9 +32,9 @@ pub struct Frame {
 
 /// Frame codec for encoding/decoding frames
 pub struct FrameCodec {
-    max_payload_size: usize,
-    rx_sequence: u64,
-    tx_sequence: u64,
+    pub max_payload_size: usize,
+    pub rx_sequence: u64,
+    pub tx_sequence: u64,
     rx_fragments: Vec<FrameFragment>,
     tx_fragments: Vec<FrameFragment>,
 }
@@ -68,7 +68,7 @@ impl FrameCodec {
     /// Encode a frame
     pub fn encode(&mut self, mut frame: Frame) -> Result<Bytes> {
         // Update sequence number
-        frame.header.sequence = SequenceNumber { value: self.tx_sequence };
+        frame.header.sequence = Some(SequenceNumber { value: self.tx_sequence });
         self.tx_sequence = self.tx_sequence.wrapping_add(1);
 
         // Calculate payload length
@@ -92,13 +92,13 @@ impl FrameCodec {
         buf.put_u8(frame.header.r#type as u8);
 
         // Flags (1 byte - packed)
-        buf.put_u8(self.pack_flags(&frame.header.flags));
+        buf.put_u8(self.pack_flags(frame.header.flags.as_ref().unwrap()));
 
         // Channel ID (4 bytes)
-        buf.put_u32_le(frame.header.channel_id.value);
+        buf.put_u32_le(frame.header.channel_id.as_ref().map_or(0, |c| c.value));
 
         // Sequence (8 bytes)
-        buf.put_u64_le(frame.header.sequence.value);
+        buf.put_u64_le(frame.header.sequence.as_ref().map_or(0, |s| s.value));
 
         // Payload length (4 bytes)
         buf.put_u32_le(frame.header.payload_length);
@@ -117,8 +117,8 @@ impl FrameCodec {
 
     /// Decode a frame from bytes
     pub fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Frame>> {
-        // Need at least header size (24 bytes) + auth tag (16 bytes)
-        const MIN_FRAME_SIZE: usize = 24 + 16;
+        // Need at least header size (30 bytes) + auth tag (16 bytes)
+        const MIN_FRAME_SIZE: usize = 30 + 16;
 
         if buf.len() < MIN_FRAME_SIZE {
             return Ok(None);
@@ -138,8 +138,8 @@ impl FrameCodec {
 
         // Read header fields to determine payload length
         let version = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
-        let frame_type = FrameType::try_from(buf[8]).map_err(|_| {
-            ProtocolError::UnknownFrameType { type: buf[8] }
+        let frame_type = FrameType::try_from(buf[8] as i32).map_err(|_| {
+            ProtocolError::UnknownFrameType { r#type: buf[8] }
         })?;
         let flags_byte = buf[9];
         let channel_id = u32::from_le_bytes([buf[10], buf[11], buf[12], buf[13]]);
@@ -175,7 +175,7 @@ impl FrameCodec {
         let _ = buf.split_to(total_size);
 
         // Verify sequence number (replay protection)
-        if sequence <= self.rx_sequence {
+        if sequence < self.rx_sequence {
             return Err(ProtocolError::ReplayDetected { sequence });
         }
         self.rx_sequence = sequence;
@@ -214,7 +214,7 @@ impl FrameCodec {
 
         if payload.len() <= self.max_payload_size {
             // Single frame
-            let mut frame = Frame {
+            let frame = Frame {
                 header: FrameHeader {
                     magic: MAGIC_NUMBER,
                     version: 0x00010000,
@@ -228,7 +228,7 @@ impl FrameCodec {
                 payload: Bytes::copy_from_slice(payload),
                 auth_tag: Bytes::new(), // Will be filled by encryption layer
             };
-            let encoded = self.encode(frame.clone())?;
+            let _encoded = self.encode(frame.clone())?;
             frames.push(frame);
         } else {
             // Fragment
@@ -238,7 +238,7 @@ impl FrameCodec {
                 frag_flags.is_fragment = true;
                 frag_flags.is_last_fragment = i == total_fragments - 1;
 
-                let mut frame = Frame {
+                let frame = Frame {
                     header: FrameHeader {
                         magic: MAGIC_NUMBER,
                         version: 0x00010000,
@@ -273,7 +273,6 @@ impl FrameCodec {
 
         if let Some(idx) = self.rx_fragments.iter().position(|f| {
             f.header.channel_id.as_ref().unwrap().value == fragment_key.0
-                && f.header.sequence.as_ref().unwrap().value == fragment_key.1
         }) {
             let fragment = &mut self.rx_fragments[idx];
             fragment.payload.extend_from_slice(&frame.payload);
@@ -335,6 +334,7 @@ impl FrameCodec {
             priority: (byte & (1 << 5)) != 0,
             ack_required: (byte & (1 << 6)) != 0,
             reset_sequence: (byte & (1 << 7)) != 0,
+            retransmission: false,
         }
     }
 
@@ -348,14 +348,14 @@ impl FrameCodec {
         buf.put_u32_le(header.channel_id.as_ref().unwrap().value);
         buf.put_u64_le(header.sequence.as_ref().unwrap().value);
         buf.put_u32_le(header.payload_length);
-        // Don't include header_crc itself
-        self.calculate_header_crc_raw(&buf)
+        let mut hasher = Hasher::new();
+        hasher.update(&buf);
+        Ok(hasher.finalize())
     }
 
     /// Calculate CRC32C of raw header bytes (excluding CRC field)
     fn calculate_header_crc_raw(&self, header_bytes: &[u8]) -> Result<u32> {
-        // CRC covers everything except the last 4 bytes (the CRC itself)
-        let crc_data = &header_bytes[..header_bytes.len() - 4];
+        let crc_data = &header_bytes[..26];
         let mut hasher = Hasher::new();
         hasher.update(crc_data);
         Ok(hasher.finalize())
@@ -404,6 +404,7 @@ pub fn build_control_frame(
                 priority: false,
                 ack_required: true,
                 reset_sequence: false,
+                retransmission: false,
             }),
             channel_id: Some(ChannelId { value: channel_id }),
             sequence: Some(SequenceNumber { value: sequence }),
@@ -435,9 +436,9 @@ pub fn build_session_open_response(
 pub fn build_keepalive(sequence: u64, timestamp: u64) -> Result<Frame> {
     let keepalive = KeepAlive {
         timestamp: Some(crate::pb::Timestamp { value: timestamp as i64 }),
-        sequence: Some(crate::pb::SequenceNumber { value: sequence }),
+        sequence: sequence as u32,
     };
-    build_control_frame(FrameType::KeepAlive, &keepalive, CONTROL_CHANNEL_ID, sequence)
+    build_control_frame(FrameType::Keepalive, &keepalive, CONTROL_CHANNEL_ID, sequence)
 }
 
 /// Build a capability negotiation frame
@@ -502,6 +503,7 @@ mod tests {
                     priority: false,
                     ack_required: false,
                     reset_sequence: false,
+                    retransmission: false,
                 }),
                 channel_id: Some(ChannelId { value: 1 }),
                 sequence: Some(SequenceNumber { value: 1 }),

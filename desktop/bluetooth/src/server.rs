@@ -8,7 +8,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use windows::Devices::Bluetooth::Rfcomm::{RfcommServiceProvider, RfcommServiceProviderStatus};
+use windows::Devices::Bluetooth::Rfcomm::RfcommServiceProvider;
 use windows::Devices::Bluetooth::BluetoothServiceCapabilities;
 use windows::Networking::Sockets::{StreamSocketListener, StreamSocket};
 use windows::Storage::Streams::{DataReader, DataWriter, IInputStream, IOutputStream};
@@ -55,17 +55,15 @@ impl RfcommServer {
             return Err(ProtocolError::Config("Server already running".to_string()));
         }
 
-        // Create RFCOMM service provider
-        let provider = RfcommServiceProvider::CreateAsync(self.service_uuid.into())
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+        let guid = windows::core::GUID::from_u128(self.service_uuid.as_u128());
+        let service_id = windows::Devices::Bluetooth::Rfcomm::RfcommServiceId::FromUuid(guid)
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-        if provider.Status() != RfcommServiceProviderStatus::Success {
-            return Err(ProtocolError::Bluetooth(format!(
-                "Failed to create RFCOMM service: {:?}", provider.Status()
-            )));
-        }
+        // Create RFCOMM service provider
+        let provider = RfcommServiceProvider::CreateAsync(&service_id)
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
+            .get()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         // Create socket listener
         let listener = StreamSocketListener::new()
@@ -73,11 +71,12 @@ impl RfcommServer {
 
         // Set up connection received handler
         let connection_tx = self.connection_tx.clone();
-        let handler = TypedEventHandler::new(move |_, args: Option<&windows::Networking::Sockets::StreamSocketListenerConnectionReceivedEventArgs>| {
+        let handler = TypedEventHandler::new(move |_, args: &Option<windows::Networking::Sockets::StreamSocketListenerConnectionReceivedEventArgs>| {
             if let Some(args) = args {
-                let socket = args.Socket().unwrap();
-                let stream = RfcommStream::from_socket(socket);
-                let _ = connection_tx.try_send(stream);
+                if let Ok(socket) = args.Socket() {
+                    let stream = RfcommStream::from_socket(socket);
+                    let _ = connection_tx.try_send(stream);
+                }
             }
             Ok(())
         });
@@ -86,16 +85,18 @@ impl RfcommServer {
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         // Bind to service provider
-        listener.BindServiceNameAsync(provider.ServiceId().unwrap())
+        let service_id_str = provider.ServiceId()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .AsString()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        listener.BindServiceNameAsync(&service_id_str)
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         // Start advertising
-        provider.StartAdvertising(
-            &self.config.service_name,
-            BluetoothServiceCapabilities::None,
-        ).map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        provider.StartAdvertising(&listener)
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         self.provider = Some(provider);
         self.listener = Some(listener);

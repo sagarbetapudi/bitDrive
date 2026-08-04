@@ -19,14 +19,17 @@ description = "Bluetooth Personal Link - Desktop Component"
 tokio = { version = "1.38", features = ["full", "tracing"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
-tracing-appender = "0.6"
+tracing-appender = "0.2"
+chrono = "0.4"
+dirs = "6"
+base64 = "0.22"
 
 # Serialization
 prost = "0.12"
 prost-types = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_toml = "0.8"
+toml = "0.8"
 bincode = "1.3"
 
 # Crypto
@@ -37,31 +40,37 @@ aes-gcm = "0.10"
 chacha20poly1305 = "0.10"
 sha2 = "0.10"
 hmac = "0.12"
-rand = { version = "0.8", features = ["std", "rng"] }
+rand = { version = "0.8", features = ["std"] }
 rand_chacha = "0.3"
 blake3 = "1.5"
 
 # Bluetooth (Windows)
 windows = { version = "0.58", features = [
-    "Win32_Devices_Bluetooth",
-    "Win32_Devices_Bluetooth_GenericAttributeProfile",
-    "Win32_Devices_Enumeration",
-    "Win32_Networking_WinSock",
-    "Win32_Foundation",
+    "Devices_Bluetooth",
+    "Devices_Bluetooth_Rfcomm",
+    "Devices_Bluetooth_GenericAttributeProfile",
+    "Devices_Enumeration",
+    "Networking",
+    "Networking_Sockets",
+    "Storage_Streams",
+    "Security_Cryptography",
+    "Foundation",
+    "Foundation_Collections",
     "Win32_System_Threading",
     "Win32_System_IO",
     "Win32_Storage_FileSystem",
 ] }
+async-trait = "0.1"
 
 # Filesystem
-notify = { version = "6.1", features = ["tokio"] }
+notify = { version = "6.1", features = ["mio"] }
 walkdir = "2.5"
 tempfile = "3.8"
 
 # Database
 rusqlite = { version = "0.31", features = ["bundled", "modern_sqlite", "extra_check"] }
 r2d2 = "0.8"
-r2d2-sqlite = "0.22"
+r2d2_sqlite = "0.24"
 
 # Config
 config = "0.14"

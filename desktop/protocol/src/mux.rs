@@ -73,15 +73,15 @@ impl Channel {
 
     /// Reserve send window
     pub fn reserve_window(&mut self, size: u32) -> Result<()> {
+        let ch_id = self.config.channel_id.as_ref().map_or(0, |c| c.value);
         if self.send_window_used + size > self.send_window {
             return Err(ProtocolError::ChannelWindowExhausted {
-                channel_id: self.config.channel_id.value,
+                channel_id: ch_id,
             });
         }
         self.send_window_used += size;
         Ok(())
     }
-
     /// Release send window
     pub fn release_window(&mut self, size: u32) {
         self.send_window_used = self.send_window_used.saturating_sub(size);
@@ -153,10 +153,11 @@ impl ChannelManager {
 
     /// Open a new channel
     pub fn open_channel(&self, mut config: ChannelConfig) -> Result<Arc<RwLock<Channel>>> {
-        let channel_id = if config.channel_id.value == 0 {
+        let requested_id = config.channel_id.as_ref().map_or(0, |c| c.value);
+        let channel_id = if requested_id == 0 {
             *self.next_channel_id.write()
         } else {
-            config.channel_id.value
+            requested_id
         };
 
         if channel_id >= MAX_CHANNELS {
@@ -171,7 +172,7 @@ impl ChannelManager {
             ));
         }
 
-        config.channel_id.value = channel_id;
+        config.channel_id = Some(crate::pb::ChannelId { value: channel_id });
         let channel = Arc::new(RwLock::new(Channel::new(config)));
         self.channels.write().insert(channel_id, channel.clone());
 
@@ -207,19 +208,20 @@ impl ChannelManager {
 
     /// Handle flow control update
     pub fn handle_flow_control(&self, update: FlowControlUpdate) -> Result<()> {
-        if let Some(channel) = self.get_channel(update.channel_id.value) {
+        let update_ch_id = update.channel_id.as_ref().map_or(0, |c| c.value);
+        if let Some(channel) = self.get_channel(update_ch_id) {
             channel.write().update_send_window(update.window_increment);
 
             if let Some(tx) = &self.event_tx {
                 let _ = tx.try_send(ChannelEvent::FlowControl(
-                    update.channel_id.value,
+                    update_ch_id,
                     channel.read().send_window,
                 ));
             }
             Ok(())
         } else {
             Err(ProtocolError::ChannelNotFound {
-                channel_id: update.channel_id.value,
+                channel_id: update_ch_id,
             })
         }
     }
@@ -237,8 +239,8 @@ impl ChannelManager {
                 let ch = ch.read();
                 ChannelStats {
                     channel_id: *id,
-                    channel_type: ch.config.r#type,
-                    priority: ch.config.priority,
+                    channel_type: ChannelType::try_from(ch.config.r#type).unwrap_or(ChannelType::Data),
+                    priority: ChannelPriority::try_from(ch.config.priority).unwrap_or(ChannelPriority::PriorityNormal),
                     state: ch.state,
                     send_window: ch.send_window,
                     send_window_used: ch.send_window_used,
@@ -304,7 +306,7 @@ pub fn default_channel_config(
     priority: ChannelPriority,
 ) -> ChannelConfig {
     ChannelConfig {
-        channel_id: crate::pb::ChannelId { value: 0 },
+        channel_id: Some(crate::pb::ChannelId { value: 0 }),
         r#type: channel_type as i32,
         priority: priority as i32,
         send_window: DEFAULT_WINDOW_SIZE,
@@ -329,12 +331,12 @@ mod tests {
     fn test_channel_manager() {
         let manager = ChannelManager::new();
 
-        let config = default_channel_config("test.service", ChannelType::Data, ChannelPriority::Normal);
+        let config = default_channel_config("test.service", ChannelType::Data, ChannelPriority::PriorityNormal);
         let channel = manager.open_channel(config).unwrap();
 
         assert_eq!(manager.list_channels().len(), 1);
 
-        channel.read().config.service_id, "test.service");
+        assert_eq!(channel.read().config.service_id, "test.service");
 
         manager.close_channel(1, "test".to_string()).unwrap();
         assert_eq!(manager.list_channels().len(), 0);
@@ -344,7 +346,7 @@ mod tests {
     fn test_flow_control() {
         let manager = ChannelManager::new();
 
-        let config = default_channel_config("test.service", ChannelType::Data, ChannelPriority::Normal);
+        let config = default_channel_config("test.service", ChannelType::Data, ChannelPriority::PriorityNormal);
         let channel = manager.open_channel(config).unwrap();
 
         // Reserve window
@@ -357,7 +359,7 @@ mod tests {
 
         // Flow control update
         let update = FlowControlUpdate {
-            channel_id: crate::pb::ChannelId { value: 1 },
+            channel_id: Some(crate::pb::ChannelId { value: 1 }),
             window_increment: 2000,
         };
         manager.handle_flow_control(update).unwrap();

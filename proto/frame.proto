@@ -58,7 +58,7 @@ enum FrameType {
   ERROR = 255;           // Protocol error
 }
 
-/// Frame flags (bitmask).
+/// Frame flags (bitmask). Only the first 8 fields (bits 0-7) are used on the wire.
 message FrameFlags {
   // Frame-level flags (bits 0-7)
   bool is_fragment = 1;      // Bit 0: Frame is a fragment
@@ -68,14 +68,12 @@ message FrameFlags {
   bool compressed = 5;       // Bit 4: Payload is compressed
   bool priority = 6;         // Bit 5: High priority frame
   bool ack_required = 7;     // Bit 6: Acknowledgment required
-  bool reserved_7 = 8;       // Bit 7: Reserved
-
-  // Extended flags (bits 8-15)
-  bool reset_sequence = 9;   // Bit 8: Reset sequence number
-  bool retransmission = 10;  // Bit 9: This is a retransmission
+  bool reset_sequence = 8;   // Bit 7: Reset sequence number
+  // Extended flags (bits 8-15) - not currently used on wire
+  bool retransmission = 9;   // Bit 8: This is a retransmission (unused)
 }
 
-/// Frame header - fixed 24 bytes for fast parsing.
+/// Frame header - fixed 24 bytes for fast parsing (custom binary format, not protobuf-encoded).
 message FrameHeader {
   // Magic number: 0x42504C01 ("BPL\x01")
   uint32 magic = 1;
@@ -86,7 +84,7 @@ message FrameHeader {
   // Frame type
   FrameType type = 3;
 
-  // Frame flags
+  // Frame flags (packed as single byte on wire)
   FrameFlags flags = 4;
 
   // Logical channel ID (0 = control channel)
@@ -118,57 +116,6 @@ message FrameFragment {
   bytes auth_tag = 5;
 }
 
-/// Session open request.
-message SessionOpenRequest {
-  ProtocolVersion client_version = 1;
-  DeviceId client_device_id = 2;
-  string client_name = 3;
-  repeated ServiceCapability capabilities = 4;
-  KeepAliveConfig keepalive_config = 5;
-  uint32 max_channels = 6;
-  uint32 max_frame_size = 7;
-  bytes client_nonce = 8; // 32 bytes random
-}
-
-/// Session open response/acknowledgment.
-message SessionOpenResponse {
-  Result result = 1;
-  ProtocolVersion negotiated_version = 2;
-  DeviceId server_device_id = 3;
-  SessionId session_id = 4;
-  repeated ServiceCapability capabilities = 5;
-  KeepAliveConfig keepalive_config = 6;
-  uint32 max_channels = 7;
-  uint32 max_frame_size = 8;
-  bytes server_nonce = 9; // 32 bytes random
-  bytes session_key_seed = 10; // For key derivation (encrypted)
-}
-
-/// Session close request.
-message SessionCloseRequest {
-  ResultCode reason = 1;
-  string message = 2;
-}
-
-/// Keepalive ping/pong.
-message KeepAlive {
-  Timestamp timestamp = 1;
-  uint32 sequence = 2;
-}
-
-/// Capability negotiation request.
-message CapabilityNegotiateRequest {
-  repeated ServiceCapability client_capabilities = 1;
-  bool require_all = 2; // If true, fail if any required capability missing
-}
-
-/// Capability negotiation response.
-message CapabilityNegotiateResponse {
-  Result result = 1;
-  repeated ServiceCapability negotiated_capabilities = 2;
-  map<string, uint32> capability_versions = 3; // service_id -> version
-}
-
 /// Authentication challenge.
 message AuthChallenge {
   bytes challenge = 1; // 32 bytes random
@@ -196,14 +143,6 @@ message AuthFailure {
   string message = 2;
 }
 
-/// Channel open request.
-message ChannelOpenRequest {
-  ChannelId channel_id = 1;
-  string service_id = 2;        // Service this channel belongs to
-  uint32 window_size = 3;       // Initial flow control window
-  uint32 max_frame_size = 4;    // Max frame size for this channel
-}
-
 /// Channel open acknowledgment.
 message ChannelOpenAck {
   ChannelId channel_id = 1;
@@ -212,62 +151,9 @@ message ChannelOpenAck {
   uint32 max_frame_size = 4;    // Peer's max frame size
 }
 
-/// Channel close request.
-message ChannelCloseRequest {
-  ChannelId channel_id = 1;
-  ResultCode reason = 2;
-  string message = 3;
-}
-
-/// Flow control window update.
-message FlowControlUpdate {
-  ChannelId channel_id = 1;
-  uint32 window_increment = 2; // Credits to add to send window
-}
-
-/// Service registration.
-message ServiceRegisterRequest {
-  ServiceCapability capability = 1;
-  ChannelId channel_id = 2; // Channel assigned to this service
-}
-
-/// Service unregistration.
-message ServiceUnregisterRequest {
-  string service_id = 1;
-}
-
-/// Service discovery request.
-message ServiceDiscoverRequest {
-  string service_id = 1; // Empty = discover all
-  string capability = 2; // Filter by capability
-}
-
-/// Service discovery response.
-message ServiceDiscoverResponse {
-  repeated ServiceCapability services = 1;
-}
-
 /// Error frame payload.
 message ErrorFrame {
   ErrorDetail error = 1;
   FrameType original_frame_type = 2;
   SequenceNumber original_sequence = 3;
-}
-
-/// Maximum frame payload size (64KB - header - auth_tag).
-/// This ensures frames fit in Bluetooth RFCOMM MTU with fragmentation.
-const uint32 MAX_FRAME_PAYLOAD_SIZE = 65535 - 24 - 16;
-
-/// Default keepalive configuration.
-message DefaultKeepAliveConfig {
-  uint32 interval_ms = 30000;  // 30 seconds
-  uint32 timeout_ms = 10000;   // 10 seconds
-  uint32 max_missed = 3;       // 3 missed = 90 seconds
-}
-
-/// Default session configuration.
-message DefaultSessionConfig {
-  uint32 max_channels = 16;
-  uint32 max_frame_size = 16384; // 16KB
-  DefaultKeepAliveConfig keepalive = 3;
 }

@@ -8,22 +8,22 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 
-/// Sync service identifier.
-const string SYNC_SERVICE_ID = "bpl.sync";
-const uint32 SYNC_SERVICE_VERSION = 1;
+/// Sync service identifier constants are defined in Rust:
+/// pub const SYNC_SERVICE_ID: &str = "bpl.sync";
+/// pub const SYNC_SERVICE_VERSION: u32 = 1;
 
 /// Sync operation types.
 enum SyncOpType {
-  OP_CREATE_JOB = 0;
-  OP_UPDATE_JOB = 1;
-  OP_DELETE_JOB = 2;
-  OP_START_SYNC = 3;
-  OP_STOP_SYNC = 4;
-  OP_GET_STATUS = 5;
-  OP_GET_JOBS = 6;
-  OP_GET_JOB = 7;
-  OP_RESOLVE_CONFLICT = 8;
-  OP_GET_CONFLICTS = 9;
+  SYNC_OP_CREATE_JOB = 0;
+  SYNC_OP_UPDATE_JOB = 1;
+  SYNC_OP_DELETE_JOB = 2;
+  SYNC_OP_START_SYNC = 3;
+  SYNC_OP_STOP_SYNC = 4;
+  SYNC_OP_GET_STATUS = 5;
+  SYNC_OP_GET_JOBS = 6;
+  SYNC_OP_GET_JOB = 7;
+  SYNC_OP_RESOLVE_CONFLICT = 8;
+  SYNC_OP_GET_CONFLICTS = 9;
 }
 
 /// Sync direction.

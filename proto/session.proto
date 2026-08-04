@@ -89,3 +89,29 @@ message SessionResumeResponse {
   bytes new_session_keys = 4; // Re-keyed session keys
   string error_message = 5;
 }
+
+/// Session event types.
+enum SessionEventType {
+  SESSION_EVENT_OPENED = 0;
+  SESSION_EVENT_CLOSED = 1;
+  SESSION_EVENT_ERROR = 2;
+  SESSION_EVENT_KEEPALIVE_TIMEOUT = 3;
+  SESSION_EVENT_CAPABILITIES_NEGOTIATED = 4;
+  SESSION_EVENT_AUTH_COMPLETE = 5;
+  SESSION_EVENT_RECONNECTING = 6;
+  SESSION_EVENT_RECONNECTED = 7;
+}
+
+/// Session configuration (for persistence).
+message SessionConfig {
+  ProtocolVersion protocol_version = 1;
+  DeviceId local_device_id = 2;
+  DeviceId remote_device_id = 3;
+  SessionId session_id = 4;
+  repeated ServiceCapability negotiated_capabilities = 5;
+  map<string, uint32> capability_versions = 6;
+  uint32 max_channels = 7;
+  uint32 max_frame_size = 8;
+  KeepAliveConfig keepalive = 9;
+  bytes session_keys = 10;
+}

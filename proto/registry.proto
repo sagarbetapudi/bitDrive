@@ -7,6 +7,7 @@ option java_multiple_files = true;
 option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
+import "mux.proto";
 
 /// Service registration request.
 message ServiceRegisterRequest {

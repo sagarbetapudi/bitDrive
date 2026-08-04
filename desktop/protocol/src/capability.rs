@@ -15,6 +15,7 @@ use crate::{
         ServiceCapability, VersionCompatibility,
     },
     error::{ProtocolError, Result},
+    service_ids,
 };
 
 /// Capability negotiator
@@ -54,13 +55,20 @@ impl CapabilityNegotiator {
 
             let negotiated_cap = match local_cap {
                 Some(local) => self.negotiate_single(local, remote_cap),
-                None => NegotiatedCapability {
-                    service_id: remote_cap.service_id.clone(),
-                    negotiated_version: 0,
-                    negotiated_features: HashMap::new(),
-                    available: false,
-                    unavailable_reason: "Not supported locally".to_string(),
-                },
+                None => {
+                    if remote_cap.required {
+                        return Err(ProtocolError::RequiredCapabilityMissing {
+                            service_id: remote_cap.service_id.clone(),
+                        });
+                    }
+                    NegotiatedCapability {
+                        service_id: remote_cap.service_id.clone(),
+                        negotiated_version: 0,
+                        negotiated_features: HashMap::new(),
+                        available: false,
+                        unavailable_reason: "Not supported locally".to_string(),
+                    }
+                }
             };
 
             negotiated.push(negotiated_cap);
@@ -86,18 +94,15 @@ impl CapabilityNegotiator {
     /// Negotiate a single capability
     fn negotiate_single(
         &self,
-        local: &CapabilityAdvertisement,
-        remote: &CapabilityAdvertisement,
+        local: &ServiceCapability,
+        remote: &ServiceCapability,
     ) -> NegotiatedCapability {
-        // Check version compatibility
-        let min_version = local.min_version.max(remote.min_version);
-        let max_version = local.max_version.min(remote.max_version);
+        let negotiated_version = local.version.min(remote.version);
 
-        if min_version > max_version {
+        if negotiated_version == 0 {
             warn!(
-                "Version mismatch for {}: local {}-{}, remote {}-{}",
-                local.service_id, local.min_version, local.max_version,
-                remote.min_version, remote.max_version
+                "Version mismatch for {}: local {}, remote {}",
+                local.service_id, local.version, remote.version
             );
             return NegotiatedCapability {
                 service_id: local.service_id.clone(),
@@ -108,21 +113,9 @@ impl CapabilityNegotiator {
             };
         }
 
-        // Use preferred version if in range, otherwise max compatible
-        let negotiated_version = if local.preferred_version >= min_version
-            && local.preferred_version <= max_version {
-            local.preferred_version
-        } else if remote.preferred_version >= min_version
-            && remote.preferred_version <= max_version {
-            remote.preferred_version
-        } else {
-            max_version
-        };
-
-        // Merge features
         let mut negotiated_features = HashMap::new();
-        for (k, v) in &local.features {
-            if remote.features.contains_key(k) {
+        for (k, v) in &local.metadata {
+            if remote.metadata.contains_key(k) {
                 negotiated_features.insert(k.clone(), v.clone());
             }
         }
@@ -134,6 +127,13 @@ impl CapabilityNegotiator {
             available: true,
             unavailable_reason: String::new(),
         }
+    }
+
+    /// Check if a service capability is supported and negotiated
+    pub fn is_capability_supported(&self, service_id: &str, required_version: u32) -> bool {
+        self.negotiated.read()
+            .iter()
+            .any(|c| c.service_id == service_id && c.available && c.negotiated_version >= required_version)
     }
 
     /// Get negotiated capabilities
@@ -165,21 +165,17 @@ impl CapabilityNegotiator {
             let remote_cap = remote.capabilities.iter()
                 .find(|c| c.service_id == local_cap.service_id);
 
-            let compatible = remote_cap.map_or(false, |r| {
-                let min = local_cap.min_version.max(r.min_version);
-                let max = local_cap.max_version.min(r.max_version);
-                min <= max
-            });
+            let compatible = remote_cap.map_or(false, |r| r.version == local_cap.version);
 
             results.push(VersionCompatibility {
                 service_id: local_cap.service_id.clone(),
-                local_version: local_cap.preferred_version,
-                remote_version: remote_cap.map(|r| r.preferred_version).unwrap_or(0),
+                local_version: local_cap.version,
+                remote_version: remote_cap.map(|r| r.version).unwrap_or(0),
                 compatible,
                 incompatibility_reason: if compatible {
                     String::new()
                 } else {
-                    "Version range incompatible".to_string()
+                    "Version mismatch".to_string()
                 },
             });
         }
@@ -194,131 +190,141 @@ impl Default for CapabilityNegotiator {
     }
 }
 
-/// Built-in capability definitions
-pub mod capabilities {
+/// Helper module for building default capability sets
+pub mod defaults {
     use super::*;
 
+    /// Get default capability descriptor for filesystem service
     pub fn filesystem() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.filesystem".to_string(),
             version: 1,
-            name: "Filesystem".to_string(),
-            description: "File and directory operations".to_string(),
-            required: true,
-            metadata: HashMap::new(),
+            name: "Filesystem Service".to_string(),
+            description: "Remote filesystem access and manipulation".to_string(),
+            required: false,
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for sync service
     pub fn sync() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.sync".to_string(),
             version: 1,
-            name: "Sync".to_string(),
-            description: "Directory synchronization".to_string(),
-            required: true,
-            metadata: HashMap::new(),
+            name: "File Sync Service".to_string(),
+            description: "Bidirectional file synchronization".to_string(),
+            required: false,
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for config service
     pub fn config() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.config".to_string(),
             version: 1,
-            name: "Config".to_string(),
-            description: "Configuration management".to_string(),
+            name: "Configuration Service".to_string(),
+            description: "Device configuration management".to_string(),
             required: true,
-            metadata: HashMap::new(),
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for photo backup service
     pub fn photo_backup() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.photo_backup".to_string(),
             version: 1,
-            name: "Photo Backup".to_string(),
-            description: "Automatic photo backup".to_string(),
+            name: "Photo Backup Service".to_string(),
+            description: "Automatic photo and video backup".to_string(),
             required: false,
-            metadata: HashMap::new(),
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for shell service
     pub fn shell() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.shell".to_string(),
             version: 1,
-            name: "Remote Shell".to_string(),
-            description: "Command execution".to_string(),
+            name: "Remote Shell Service".to_string(),
+            description: "Remote command execution and shell access".to_string(),
             required: false,
-            metadata: HashMap::new(),
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for media control service
     pub fn media_control() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.media_control".to_string(),
             version: 1,
-            name: "Media Control".to_string(),
-            description: "Media playback control".to_string(),
+            name: "Media Control Service".to_string(),
+            description: "Remote media playback control".to_string(),
             required: false,
-            metadata: HashMap::new(),
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for phone FS service
     pub fn phone_fs() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.phone_fs".to_string(),
             version: 1,
-            name: "Phone Filesystem".to_string(),
-            description: "Access phone storage".to_string(),
+            name: "Phone Filesystem Service".to_string(),
+            description: "Access to Android SAF document trees".to_string(),
             required: false,
-            metadata: HashMap::new(),
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for proximity service
     pub fn proximity() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.proximity".to_string(),
             version: 1,
-            name: "Proximity".to_string(),
-            description: "Proximity detection".to_string(),
+            name: "Proximity Service".to_string(),
+            description: "Proximity detection and RSSI monitoring".to_string(),
             required: false,
-            metadata: HashMap::new(),
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for file stream service
     pub fn file_stream() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.file_stream".to_string(),
             version: 1,
-            name: "File Streaming".to_string(),
-            description: "On-demand file streaming".to_string(),
+            name: "File Stream Service".to_string(),
+            description: "High-speed streaming file transfers".to_string(),
             required: false,
-            metadata: HashMap::new(),
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
+    /// Get default capability descriptor for app launcher service
     pub fn app_launcher() -> ServiceCapability {
         ServiceCapability {
             service_id: "bpl.app_launcher".to_string(),
             version: 1,
-            name: "App Launcher".to_string(),
-            description: "Launch applications".to_string(),
+            name: "App Launcher Service".to_string(),
+            description: "Remote application launching".to_string(),
             required: false,
-            metadata: HashMap::new(),
+            metadata: Default::default(),
             feature_flags: 0,
         }
     }
 
-    /// Get all default capabilities for desktop
+    /// Get all default capabilities for Desktop
     pub fn desktop_default() -> CapabilitySet {
         CapabilitySet {
             capabilities: vec![
@@ -333,10 +339,10 @@ pub mod capabilities {
                 file_stream(),
                 app_launcher(),
             ],
-            protocol_version: crate::pb::ProtocolVersion { major: 1, minor: 0, patch: 0 },
+            protocol_version: Some(crate::pb::ProtocolVersion { major: 1, minor: 0, patch: 0 }),
             software_version: env!("CARGO_PKG_VERSION").to_string(),
             device_name: "BPL Desktop".to_string(),
-            device_id: crate::pb::DeviceId { value: vec![] },
+            device_id: Some(crate::pb::DeviceId { value: vec![] }),
         }
     }
 
@@ -355,10 +361,10 @@ pub mod capabilities {
                 file_stream(),
                 app_launcher(),
             ],
-            protocol_version: crate::pb::ProtocolVersion { major: 1, minor: 0, patch: 0 },
+            protocol_version: Some(crate::pb::ProtocolVersion { major: 1, minor: 0, patch: 0 }),
             software_version: env!("CARGO_PKG_VERSION").to_string(),
             device_name: "BPL Android".to_string(),
-            device_id: crate::pb::DeviceId { value: vec![] },
+            device_id: Some(crate::pb::DeviceId { value: vec![] }),
         }
     }
 }
@@ -370,9 +376,9 @@ mod tests {
     #[test]
     fn test_capability_negotiation() {
         let negotiator = CapabilityNegotiator::new();
-        negotiator.set_local_capabilities(capabilities::desktop_default());
+        negotiator.set_local_capabilities(defaults::desktop_default());
 
-        let remote = capabilities::android_default();
+        let remote = defaults::android_default();
         let result = negotiator.negotiate(&remote).unwrap();
 
         assert_eq!(result.len(), 10);
@@ -384,13 +390,13 @@ mod tests {
 
     #[test]
     fn test_missing_required() {
-        let mut local = capabilities::desktop_default();
-        local.capabilities.retain(|c| c.service_id != "bpl.filesystem");
+        let mut local = defaults::desktop_default();
+        local.capabilities.retain(|c| c.service_id != "bpl.config");
 
         let negotiator = CapabilityNegotiator::new();
         negotiator.set_local_capabilities(local);
 
-        let remote = capabilities::android_default();
+        let remote = defaults::android_default();
         let result = negotiator.negotiate(&remote);
 
         assert!(result.is_err());

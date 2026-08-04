@@ -45,15 +45,17 @@ impl RfcommClient {
 
         let id_str = String::from_utf8_lossy(&device_id.value).to_string();
 
-        // Find RFCOMM service on device
-        let selector = RfcommDeviceService::GetDeviceSelector(RfcommServiceId::from_uuid(
-            self.config.service_uuid.parse()
-                .map_err(|e| ProtocolError::Config(format!("Invalid UUID: {}", e)))?
-        ));
+        let uuid = Uuid::parse_str(&self.config.service_uuid)
+            .map_err(|e| ProtocolError::Config(format!("Invalid UUID: {}", e)))?;
+        let guid = windows::core::GUID::from_u128(uuid.as_u128());
+        let service_id = RfcommServiceId::FromUuid(guid)
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let selector = RfcommDeviceService::GetDeviceSelector(&service_id)
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-        let services = DeviceInformation::FindAllAsync(selector)
+        let services = DeviceInformation::FindAllAsyncAqsFilter(&selector)
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         // Find service for our device
@@ -70,25 +72,25 @@ impl RfcommClient {
         })?;
 
         // Get RFCOMM device service
-        let rfcomm_service = RfcommDeviceService::FromIdAsync(&service_info.Id().unwrap())
+        let service_id_hstring = service_info.Id()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let rfcomm_service = RfcommDeviceService::FromIdAsync(&service_id_hstring)
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         // Create socket and connect
         let socket = StreamSocket::new()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-        // Set connection timeout
-        let connect_op = socket.ConnectAsync(
-            rfcomm_service.ConnectionHostName().unwrap(),
-            rfcomm_service.ConnectionServiceName().unwrap(),
-        ).map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let host_name = rfcomm_service.ConnectionHostName()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let service_name = rfcomm_service.ConnectionServiceName()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-        // Wait with timeout
-        timeout(self.config.connection_params.timeout_ms as u64, connect_op)
-            .await
-            .map_err(|_| ProtocolError::Timeout("Connection timeout".to_string()))?
+        socket.ConnectAsync(&host_name, &service_name)
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         self.socket = Some(socket);

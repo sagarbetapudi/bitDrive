@@ -19,7 +19,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 clap = { workspace = true }
 base64 = { version = "0.22", features = ["std"] }
-rand = { workspace = true, features = ["std", "rng"] }
+rand = { workspace = true, features = ["std"] }
 
 # Internal crates
 bpl-protocol = { path = "../protocol" }

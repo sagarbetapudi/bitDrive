@@ -9,13 +9,47 @@ pub mod server;
 pub mod client;
 pub mod stream;
 
-pub use adapter::{BluetoothAdapter, AdapterInfo, AdapterState};
-pub use server::{RfcommServer, ServerConfig};
-pub use client::{RfcommClient, ClientConfig};
+pub use adapter::{WindowsBluetoothAdapter as BluetoothAdapter, AdapterInfo, AdapterState};
+pub use server::RfcommServer;
+pub use client::RfcommClient;
 pub use stream::{RfcommStream, StreamConfig};
 
 use crate::platform::PlatformBluetooth;
 use bpl_protocol::{DeviceId, ProtocolError, Result};
+
+/// Server configuration
+#[derive(Debug, Clone)]
+pub struct ServerConfig {
+    pub service_name: String,
+    pub service_uuid: String,
+    pub connection_params: ConnectionParams,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            service_name: "BPL RFCOMM Service".to_string(),
+            service_uuid: BPL_RFCOMM_SERVICE_UUID.to_string(),
+            connection_params: ConnectionParams::default(),
+        }
+    }
+}
+
+/// Client configuration
+#[derive(Debug, Clone)]
+pub struct ClientConfig {
+    pub service_uuid: String,
+    pub connection_params: ConnectionParams,
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        Self {
+            service_uuid: BPL_RFCOMM_SERVICE_UUID.to_string(),
+            connection_params: ConnectionParams::default(),
+        }
+    }
+}
 
 /// Bluetooth manager - main entry point for Bluetooth operations
 pub struct BluetoothManager {
@@ -26,7 +60,7 @@ pub struct BluetoothManager {
 impl BluetoothManager {
     /// Create a new Bluetooth manager
     pub async fn new() -> Result<Self> {
-        let platform = PlatformBluetooth::new().await?;
+        let platform = platform::new_platform_bluetooth().await?;
         Ok(Self {
             platform,
             adapter: None,

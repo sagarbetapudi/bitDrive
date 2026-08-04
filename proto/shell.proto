@@ -8,22 +8,22 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 
-/// Shell service identifier.
-const string SHELL_SERVICE_ID = "bpl.shell";
-const uint32 SHELL_SERVICE_VERSION = 1;
+/// Shell service identifier constants are defined in Rust:
+/// pub const SHELL_SERVICE_ID: &str = "bpl.shell";
+/// pub const SHELL_SERVICE_VERSION: u32 = 1;
 
 /// Shell operation types.
 enum ShellOpType {
-  OP_CREATE_SESSION = 0;
-  OP_CLOSE_SESSION = 1;
-  OP_EXECUTE = 2;
-  OP_WRITE_STDIN = 3;
-  OP_RESIZE = 4;
-  OP_SIGNAL = 5;
-  OP_GET_HISTORY = 6;
-  OP_SET_ENV = 7;
-  OP_GET_ENV = 8;
-  OP_LIST_SESSIONS = 9;
+  SHELL_OP_CREATE_SESSION = 0;
+  SHELL_OP_CLOSE_SESSION = 1;
+  SHELL_OP_EXECUTE = 2;
+  SHELL_OP_WRITE_STDIN = 3;
+  SHELL_OP_RESIZE = 4;
+  SHELL_OP_SIGNAL = 5;
+  SHELL_OP_GET_HISTORY = 6;
+  SHELL_OP_SET_ENV = 7;
+  SHELL_OP_GET_ENV = 8;
+  SHELL_OP_LIST_SESSIONS = 9;
 }
 
 /// Shell session.
@@ -36,15 +36,15 @@ message ShellSession {
   uint32 rows = 6;
   Timestamp created_at = 7;
   Timestamp last_activity = 8;
-  SessionState state = 9;
+  ShellSessionState state = 9;
 }
 
 /// Shell session state.
-enum SessionState {
-  SESSION_CREATED = 0;
-  SESSION_RUNNING = 1;
-  SESSION_CLOSED = 2;
-  SESSION_ERROR = 3;
+enum ShellSessionState {
+  SHELL_SESSION_CREATED = 0;
+  SHELL_SESSION_RUNNING = 1;
+  SHELL_SESSION_CLOSED = 2;
+  SHELL_SESSION_ERROR = 3;
 }
 
 /// Shell request.

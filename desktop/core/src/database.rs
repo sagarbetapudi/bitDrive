@@ -1,14 +1,12 @@
-//! Database layer for BPL Desktop
+//! Database layer for BPL Desktop core/src/database.rs
 
 use std::path::Path;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use parking_lot::RwLock;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
-use tracing::{debug, error, info, warn};
+use tracing::info;
 
 use bpl_protocol::{DeviceId, SessionId, ProtocolError, Result};
 
@@ -27,6 +25,7 @@ impl std::ops::Deref for PooledConnection {
 }
 
 /// Database wrapper
+#[derive(Clone)]
 pub struct Database {
     pool: DatabasePool,
     path: String,
@@ -34,44 +33,30 @@ pub struct Database {
 
 impl Database {
     /// Create new database
+    fn db_err(e: rusqlite::Error) -> ProtocolError {
+        ProtocolError::Database(e.to_string())
+    }
     pub async fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path_str = path.as_ref().to_string_lossy().to_string();
-
-        // Ensure parent directory exists
-        if let Some(parent) = path.as_ref().parent() {
-            tokio::fs::create_dir_all(parent).await?;
+        let path = path.as_ref();
+        
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
         }
 
-        let manager = SqliteConnectionManager::file(path.as_ref())
-            .with_init(|conn| {
-                // Configure SQLite
-                conn.execute("PRAGMA journal_mode = WAL", [])?;
-                conn.execute("PRAGMA synchronous = NORMAL", [])?;
-                conn.execute("PRAGMA busy_timeout = 5000", [])?;
-                conn.execute("PRAGMA foreign_keys = ON", [])?;
-                conn.execute("PRAGMA temp_store = MEMORY", [])?;
-                conn.execute("PRAGMA page_size = 4096", [])?;
-                conn.execute("PRAGMA cache_size = -32768", [])?; // 32MB cache
-                Ok(())
-            });
-
+        let manager = SqliteConnectionManager::file(path);
         let pool = Pool::builder()
-            .max_size(10)
-            .min_idle(Some(2))
-            .connection_timeout(Duration::from_secs(10))
+            .max_size(5)
             .build(manager)
             .map_err(|e| ProtocolError::Database(e.to_string()))?;
 
-        let db = Self {
+        let database = Self {
             pool,
-            path: path_str,
+            path: path.to_string_lossy().into_owned(),
         };
 
-        // Run migrations
-        db.migrate().await?;
+        database.migrate().await?;
 
-        info!("Database initialized at {}", db.path);
-        Ok(db)
+        Ok(database)
     }
 
     /// Get a connection from the pool
@@ -106,7 +91,7 @@ impl Database {
                 applied_at INTEGER NOT NULL
             )",
             [],
-        )?;
+        ).map_err(Self::db_err)?;
 
         for (i, migration) in migrations.iter().enumerate() {
             let version = (i + 1) as i64;
@@ -115,7 +100,7 @@ impl Database {
                 "SELECT 1 FROM schema_migrations WHERE version = ?",
                 params![version],
                 |_| Ok(true),
-            ).optional()?.unwrap_or(false);
+            ).optional().map_err(Self::db_err)?.unwrap_or(false);
 
             if !applied {
                 info!("Applying migration {}", version);
@@ -124,7 +109,7 @@ impl Database {
                 conn.execute(
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
                     params![version, Self::current_timestamp()],
-                )?;
+                ).map_err(Self::db_err)?;
             }
         }
 
@@ -287,7 +272,7 @@ impl Database {
                 secret INTEGER DEFAULT 0,
                 updated_at INTEGER NOT NULL
             );
-        "#)?;
+        "#).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -307,7 +292,7 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_photos_hash ON photos (hash);
             CREATE INDEX IF NOT EXISTS idx_shell_sessions_device ON shell_sessions (device_id);
             CREATE INDEX IF NOT EXISTS idx_shell_history_session ON shell_history (session_id);
-        "#)?;
+        "#).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -324,34 +309,31 @@ impl Database {
                 updated_at INTEGER NOT NULL
             )",
             [],
-        )?;
+        ).map_err(Self::db_err)?;
         Ok(())
     }
 
     /// Migration 4: Add sync tables (already in migration 1)
-    fn migration_004_add_sync_tables(conn: &Connection) -> Result<()> {
+    fn migration_004_add_sync_tables(_conn: &Connection) -> Result<()> {
         // Tables already created in migration 1
         Ok(())
     }
 
     /// Migration 5: Add photo backup tables (already in migration 1)
-    fn migration_005_add_photo_backup(conn: &Connection) -> Result<()> {
+    fn migration_005_add_photo_backup(_conn: &Connection) -> Result<()> {
         // Tables already created in migration 1
         Ok(())
     }
 
     /// Migration 6: Add shell history table (already in migration 1)
-    fn migration_006_add_shell_history(conn: &Connection) -> Result<()> {
+    fn migration_006_add_shell_history(_conn: &Connection) -> Result<()> {
         // Table already created in migration 1
         Ok(())
     }
 
-    /// Migration 7: Add additional config columns
-    fn migration_007_add_config(conn: &Connection) -> Result<()> {
-        conn.execute(
-            "ALTER TABLE config ADD COLUMN secret INTEGER DEFAULT 0",
-            [],
-        ).or_else(|_| Ok(()))?; // Ignore if column exists
+    /// Migration 7: No-op.
+    /// The `secret` column is already created by migration 1.
+    fn migration_007_add_config(_conn: &Connection) -> Result<()> {
         Ok(())
     }
 
@@ -390,7 +372,7 @@ impl Database {
                 now,
                 now,
             ],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -412,7 +394,7 @@ impl Database {
                 created_at: row.get(7)?,
                 metadata: row.get(8)?,
             }),
-        ).optional()?;
+        ).optional().map_err(Self::db_err)?;
 
         Ok(record)
     }
@@ -422,7 +404,7 @@ impl Database {
 
         let mut stmt = conn.prepare(
             "SELECT id, name, address, paired, trusted, psk, last_seen, created_at, metadata FROM devices WHERE paired = 1"
-        )?;
+        ).map_err(Self::db_err)?;
 
         let records = stmt.query_map([], |row| Ok(DeviceRecord {
             id: DeviceId { value: row.get(0)? },
@@ -434,11 +416,11 @@ impl Database {
             last_seen: row.get(6)?,
             created_at: row.get(7)?,
             metadata: row.get(8)?,
-        }))?;
+        })).map_err(Self::db_err)?;
 
         let mut result = Vec::new();
         for record in records {
-            result.push(record?);
+            result.push(record.map_err(Self::db_err)?);
         }
 
         Ok(result)
@@ -463,7 +445,7 @@ impl Database {
                 now,
                 now,
             ],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -475,7 +457,7 @@ impl Database {
         conn.execute(
             "UPDATE sessions SET state = ?, last_activity = ? WHERE id = ?",
             params![state, now, &session_id.value],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -498,7 +480,7 @@ impl Database {
                 bytes_sent: row.get(8)?,
                 bytes_received: row.get(9)?,
             }),
-        ).optional()?;
+        ).optional().map_err(Self::db_err)?;
 
         Ok(record)
     }
@@ -508,7 +490,7 @@ impl Database {
 
         let mut stmt = conn.prepare(
             "SELECT id, device_id, protocol_version, session_keys, capabilities, state, created_at, last_activity, bytes_sent, bytes_received FROM sessions WHERE state IN ('opening', 'negotiating', 'authenticating', 'active')"
-        )?;
+        ).map_err(Self::db_err)?;
 
         let records = stmt.query_map([], |row| Ok(SessionRecord {
             id: SessionId { value: row.get(0)? },
@@ -521,11 +503,11 @@ impl Database {
             last_activity: row.get(7)?,
             bytes_sent: row.get(8)?,
             bytes_received: row.get(9)?,
-        }))?;
+        })).map_err(Self::db_err)?;
 
         let mut result = Vec::new();
         for record in records {
-            result.push(record?);
+            result.push(record.map_err(Self::db_err)?);
         }
 
         Ok(result)
@@ -548,7 +530,7 @@ impl Database {
                 updated_at = excluded.updated_at
             "#,
             params![key, value, description, read_only as i64, secret as i64, now],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -560,23 +542,28 @@ impl Database {
             "SELECT value FROM config WHERE key = ?",
             params![key],
             |row| row.get(0),
-        ).optional()?;
+        ).optional().map_err(Self::db_err)?;
 
         Ok(value)
     }
 
     pub fn delete_config(&self, key: &str) -> Result<()> {
         let conn = self.get()?;
-        conn.execute("DELETE FROM config WHERE key = ? AND read_only = 0", params![key])?;
+
+        conn.execute(
+            "DELETE FROM config WHERE key = ? AND read_only = 0",
+            params![key],
+        )
+        .map_err(Self::db_err)?;
+
         Ok(())
     }
-
     pub fn list_config(&self) -> Result<Vec<ConfigRecord>> {
         let conn = self.get()?;
 
         let mut stmt = conn.prepare(
             "SELECT key, value, description, read_only, secret, updated_at FROM config"
-        )?;
+        ).map_err(Self::db_err)?;
 
         let records = stmt.query_map([], |row| Ok(ConfigRecord {
             key: row.get(0)?,
@@ -585,11 +572,11 @@ impl Database {
             read_only: row.get(3)?,
             secret: row.get(4)?,
             updated_at: row.get(5)?,
-        }))?;
+        })).map_err(Self::db_err)?;
 
         let mut result = Vec::new();
         for record in records {
-            result.push(record?);
+            result.push(record.map_err(Self::db_err)?);
         }
 
         Ok(result)
@@ -621,7 +608,7 @@ impl Database {
                 job.created_at,
                 job.updated_at,
             ],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -651,7 +638,7 @@ impl Database {
                 updated_at: row.get(15)?,
                 stats: row.get(16)?,
             }),
-        ).optional()?;
+        ).optional().map_err(Self::db_err)?;
 
         Ok(record)
     }
@@ -661,7 +648,7 @@ impl Database {
 
         let mut stmt = conn.prepare(
             "SELECT id, name, description, direction, local_path, remote_path, enabled, auto_sync, schedule_type, schedule_value, conflict_strategy, filters, status, last_sync, created_at, updated_at, stats FROM sync_jobs"
-        )?;
+        ).map_err(Self::db_err)?;
 
         let records = stmt.query_map([], |row| Ok(SyncJobRecord {
             id: row.get(0)?,
@@ -681,11 +668,11 @@ impl Database {
             created_at: row.get(14)?,
             updated_at: row.get(15)?,
             stats: row.get(16)?,
-        }))?;
+        })).map_err(Self::db_err)?;
 
         let mut result = Vec::new();
         for record in records {
-            result.push(record?);
+            result.push(record.map_err(Self::db_err)?);
         }
 
         Ok(result)
@@ -698,7 +685,7 @@ impl Database {
         conn.execute(
             "UPDATE sync_jobs SET status = ?, updated_at = ? WHERE id = ?",
             params![status, now, job_id],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -710,14 +697,20 @@ impl Database {
         conn.execute(
             "UPDATE sync_jobs SET last_sync = ?, updated_at = ? WHERE id = ?",
             params![last_sync, now, job_id],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }
 
     pub fn delete_sync_job(&self, job_id: &str) -> Result<()> {
         let conn = self.get()?;
-        conn.execute("DELETE FROM sync_jobs WHERE id = ?", params![job_id])?;
+
+        conn.execute(
+            "DELETE FROM sync_jobs WHERE id = ?",
+            params![job_id],
+        )
+        .map_err(Self::db_err)?;
+
         Ok(())
     }
 
@@ -742,7 +735,7 @@ impl Database {
                 conflict.detected_at,
                 &conflict.resolution_strategy,
             ],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }
@@ -752,7 +745,7 @@ impl Database {
 
         let mut stmt = conn.prepare(
             "SELECT id, job_id, local_path, remote_path, local_metadata, remote_metadata, local_hash, remote_hash, detected_at, resolved, resolution_strategy FROM sync_conflicts WHERE job_id = ?"
-        )?;
+        ).map_err(Self::db_err)?;
 
         let records = stmt.query_map(params![job_id], |row| Ok(SyncConflictRecord {
             id: row.get(0)?,
@@ -766,11 +759,11 @@ impl Database {
             detected_at: row.get(8)?,
             resolved: row.get(9)?,
             resolution_strategy: row.get(10)?,
-        }))?;
+        })).map_err(Self::db_err)?;
 
         let mut result = Vec::new();
         for record in records {
-            result.push(record?);
+            result.push(record.map_err(Self::db_err)?);
         }
 
         Ok(result)
@@ -782,7 +775,7 @@ impl Database {
         conn.execute(
             "UPDATE sync_conflicts SET resolved = 1, resolution_strategy = ? WHERE id = ?",
             params![strategy, conflict_id],
-        )?;
+        ).map_err(Self::db_err)?;
 
         Ok(())
     }

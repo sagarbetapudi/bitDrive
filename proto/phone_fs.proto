@@ -8,26 +8,27 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 import "filesystem.proto";
+import "media_control.proto";
 
-/// Phone filesystem service identifier.
-const string PHONE_FS_SERVICE_ID = "bpl.phone_fs";
-const uint32 PHONE_FS_SERVICE_VERSION = 1;
+/// Phone filesystem service identifier constants are defined in Rust:
+/// pub const PHONE_FS_SERVICE_ID: &str = "bpl.phone_fs";
+/// pub const PHONE_FS_SERVICE_VERSION: u32 = 1;
 
 /// Phone FS operation types (extends filesystem ops).
 enum PhoneFsOpType {
-  OP_LIST = 0;
-  OP_STAT = 1;
-  OP_READ = 2;
-  OP_WRITE = 3;
-  OP_CREATE = 4;
-  OP_DELETE = 5;
-  OP_MOVE = 6;
-  OP_COPY = 7;
-  OP_MKDIR = 8;
-  OP_OPEN_DOCUMENT = 9;      // Open via SAF
-  OP_CREATE_DOCUMENT = 10;   // Create via SAF
-  OP_QUERY_ROOTS = 11;       // Get SAF roots
-  OP_GET_MEDIA_METADATA = 12; // Get media metadata
+  PHONE_FS_OP_LIST = 0;
+  PHONE_FS_OP_STAT = 1;
+  PHONE_FS_OP_READ = 2;
+  PHONE_FS_OP_WRITE = 3;
+  PHONE_FS_OP_CREATE = 4;
+  PHONE_FS_OP_DELETE = 5;
+  PHONE_FS_OP_MOVE = 6;
+  PHONE_FS_OP_COPY = 7;
+  PHONE_FS_OP_MKDIR = 8;
+  PHONE_FS_OP_OPEN_DOCUMENT = 9;      // Open via SAF
+  PHONE_FS_OP_CREATE_DOCUMENT = 10;   // Create via SAF
+  PHONE_FS_OP_QUERY_ROOTS = 11;       // Get SAF roots
+  PHONE_FS_OP_GET_MEDIA_METADATA = 12; // Get media metadata
 }
 
 /// Document provider root.
@@ -44,9 +45,9 @@ message DocumentRoot {
 
 /// Document root flags.
 enum DocumentRootFlag {
+  ROOT_FLAG_UNSPECIFIED = 0;
   ROOT_FLAG_SUPPORTS_CREATE = 1;
   ROOT_FLAG_SUPPORTS_SEARCH = 2;
-  ROOT_FLAG_SUPPORTS_RECENTS = 4;
   ROOT_FLAG_SUPPORTS_RECENTS = 4;
   ROOT_FLAG_LOCAL_ONLY = 8;
 }
@@ -75,21 +76,6 @@ message PhoneFsResponse {
   uint64 bytes_written = 7;             // For WRITE
   string document_id = 8;               // For CREATE/OPEN
   MediaMetadata media_metadata = 9;     // For GET_MEDIA_METADATA
-}
-
-/// Media metadata for phone files.
-message MediaMetadata {
-  string title = 1;
-  string artist = 2;
-  string album = 3;
-  uint64 duration = 4;         // milliseconds
-  uint32 width = 5;            // For images/video
-  uint32 height = 6;
-  string mime_type = 7;
-  uint64 date_taken = 8;       // Unix timestamp
-  double latitude = 9;         // GPS
-  double longitude = 10;
-  string datetaken_string = 11; // ISO8601
 }
 
 /// Phone FS capabilities.

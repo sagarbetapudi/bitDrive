@@ -183,7 +183,7 @@ impl ServiceManager {
     }
 
     /// Get a service
-    pub fn get_service(&self, service_id: &str) -> Option<Box<dyn Service>> {
+    pub fn get_service(&self, _service_id: &str) -> Option<Box<dyn Service>> {
         // Note: Can't easily return Box<dyn Service> from Arc<RwLock<HashMap>>
         // This would need a different design. For now, use handle_request directly.
         None
@@ -223,7 +223,7 @@ impl ServiceManager {
 
     /// Handle request by routing to appropriate service
     pub async fn handle_request(&self, request: ServiceRequest) -> Result<ServiceResponse> {
-        if let Some(service) = self.services.read().get(&request.service_id) {
+        if let Some(service) = self.services.write().get_mut(&request.service_id) {
             service.handle_request(request).await
         } else {
             Ok(ServiceResponse {
@@ -238,7 +238,7 @@ impl ServiceManager {
 
     /// Broadcast event to all services
     pub async fn broadcast_event(&self, event: ServiceEvent) -> Result<()> {
-        for (id, service) in self.services.read().iter() {
+        for (id, service) in self.services.write().iter_mut() {
             if let Err(e) = service.handle_event(event.clone()).await {
                 tracing::error!("Error handling event in {}: {}", id, e);
             }

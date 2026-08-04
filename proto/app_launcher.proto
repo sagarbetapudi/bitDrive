@@ -8,17 +8,17 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 
-/// App launcher service identifier.
-const string APP_LAUNCHER_SERVICE_ID = "bpl.app_launcher";
-const uint32 APP_LAUNCHER_SERVICE_VERSION = 1;
+/// App launcher service identifier constants are defined in Rust:
+/// pub const APP_LAUNCHER_SERVICE_ID: &str = "bpl.app_launcher";
+/// pub const APP_LAUNCHER_SERVICE_VERSION: u32 = 1;
 
 /// App launcher operation types.
 enum AppLauncherOpType {
-  OP_LIST_APPS = 0;
-  OP_GET_APP = 1;
-  OP_GET_ICON = 2;
-  OP_GET_SHORTCUTS = 3;
-  OP_GET_RUNNING = 4;
+  APP_LAUNCHER_OP_LIST_APPS = 0;
+  APP_LAUNCHER_OP_GET_APP = 1;
+  APP_LAUNCHER_OP_GET_ICON = 2;
+  APP_LAUNCHER_OP_GET_SHORTCUTS = 3;
+  APP_LAUNCHER_OP_GET_RUNNING = 4;
 }
 
 /// Application info.

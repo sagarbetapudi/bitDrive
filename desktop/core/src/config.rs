@@ -1,11 +1,12 @@
-//! Configuration management for BPL Desktop
+//! Configuration management for BPL Desktop core/src/config.rs
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use config::{Config, File, FileFormat, Environment};
 use parking_lot::RwLock;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tracing::{debug, info, warn};
@@ -13,6 +14,7 @@ use tracing::{debug, info, warn};
 use bpl_protocol::{DeviceId, ProtocolError, Result};
 
 /// Configuration manager
+#[derive(Clone)]
 pub struct ConfigManager {
     config: Arc<RwLock<AppConfig>>,
     config_path: PathBuf,
@@ -210,36 +212,42 @@ impl ConfigManager {
 
     /// Load configuration from specific path
     pub async fn load_from_path<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
-        let path = path.as_ref();
+    let config_path = path.as_ref().to_path_buf();
 
-        let mut builder = Config::builder();
+    let mut builder = Config::builder();
 
-        // Add default config file if it exists
-        if config_path.exists() {
-            builder = builder.add_source(File::new(&config_path, FileFormat::Toml));
-        }
-
-        // Add environment variable overrides
-        builder = builder.add_source(Environment::with_prefix("BPL").separator("__"));
-
-        let config = builder.build()
-            .map_err(|e| ProtocolError::Config(e.to_string()))?;
-
-        let app_config: AppConfig = config.try_deserialize()
-            .map_err(|e| ProtocolError::Config(e.to_string()))?;
-
-        let manager = Self {
-            config: Arc::new(RwLock::new(app_config)),
-            config_path,
-        };
-
-        // Save if this is a new config
-        if !manager.config_path.exists() {
-            manager.save().await?;
-        }
-
-        Ok(manager)
+    if config_path.exists() {
+        builder = builder.add_source(
+            File::new(
+                config_path.to_string_lossy().as_ref(),
+                FileFormat::Toml,
+            )
+        );
     }
+
+    builder = builder.add_source(
+        Environment::with_prefix("BPL").separator("__")
+    );
+
+    let config = builder
+        .build()
+        .map_err(|e| ProtocolError::Config(e.to_string()))?;
+
+    let app_config: AppConfig = config
+        .try_deserialize()
+        .map_err(|e| ProtocolError::Config(e.to_string()))?;
+
+    let manager = Self {
+        config: Arc::new(RwLock::new(app_config)),
+        config_path,
+    };
+
+    if !manager.config_path.exists() {
+        manager.save().await?;
+    }
+
+    Ok(manager)
+}
 
     /// Get config directory
     pub fn config_dir() -> Result<PathBuf> {
@@ -293,8 +301,9 @@ impl ConfigManager {
 
         if let Some(device_id_str) = &config.device.device_id {
             // Decode existing device ID
-            let bytes = base64::decode(device_id_str)
-                .map_err(|e| ProtocolError::Config(format!("Invalid device ID: {}", e)))?;
+            let bytes = STANDARD
+            .decode(device_id_str)
+            .map_err(|e| ProtocolError::Config(format!("Invalid device ID: {}", e)))?;
             if bytes.len() == 16 {
                 return Ok(DeviceId { value: bytes });
             }
@@ -306,7 +315,7 @@ impl ConfigManager {
         let device_id = DeviceId { value: bytes.to_vec() };
 
         // Save as base64
-        config.device.device_id = Some(base64::encode(&bytes));
+        config.device.device_id = Some(STANDARD.encode(bytes));
         drop(config);
         self.save().await?;
 
@@ -315,14 +324,18 @@ impl ConfigManager {
 
     /// Get PSK
     pub fn get_psk(&self) -> Option<Vec<u8>> {
-        self.config.read().security.psk.as_ref()
-            .and_then(|s| base64::decode(s).ok())
+        self.config
+            .read()
+            .security
+            .psk
+            .as_ref()
+            .and_then(|s| STANDARD.decode(s).ok())
     }
 
     /// Set PSK
     pub async fn set_psk(&self, psk: Vec<u8>) -> Result<()> {
         let mut config = self.config.write();
-        config.security.psk = Some(base64::encode(&psk));
+        config.security.psk = Some(STANDARD.encode(&psk));
         drop(config);
         self.save().await
     }
@@ -440,7 +453,9 @@ mod tests {
         fs::write(&config_path, toml).await.unwrap();
 
         // Load config
-        let manager = ConfigManager::load().await.unwrap();
+        let manager = ConfigManager::load_from_path(&config_path)
+        .await
+        .unwrap();
         let loaded = manager.get();
 
         assert_eq!(loaded.bluetooth.device_name, "BPL Desktop");
@@ -452,13 +467,22 @@ mod tests {
         let dir = tempdir().unwrap();
         let config_path = dir.path().join("config.toml");
 
-        let manager = ConfigManager::load().await.unwrap();
-        let device_id = manager.get_or_create_device_id().await.unwrap();
+        let manager = ConfigManager::load_from_path(&config_path)
+            .await
+            .unwrap();
+
+        let device_id = manager
+            .get_or_create_device_id()
+            .await
+            .unwrap();
 
         assert_eq!(device_id.value.len(), 16);
 
-        // Second call should return same ID
-        let device_id2 = manager.get_or_create_device_id().await.unwrap();
+        let device_id2 = manager
+            .get_or_create_device_id()
+            .await
+            .unwrap();
+
         assert_eq!(device_id.value, device_id2.value);
     }
 }

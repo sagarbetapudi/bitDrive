@@ -13,15 +13,11 @@ message ProtocolVersion {
   uint32 major = 1;
   uint32 minor = 2;
   uint32 patch = 3;
-
-  string to_string = 4 [(proto3.field).deprecated = true];
 }
 
 /// Unique identifier for a device (Bluetooth MAC address or generated UUID).
 message DeviceId {
   bytes value = 1; // 6 bytes for MAC, 16 bytes for UUID
-
-  string to_hex = 2 [(proto3.field).deprecated = true];
 }
 
 /// Unique session identifier.
@@ -114,6 +110,7 @@ message ServiceCapability {
   string description = 4;       // Description
   bool required = 5;            // Whether this service is required for basic operation
   map<string, string> metadata = 6; // Additional metadata
+  uint64 feature_flags = 7;     // Bitmask of feature flags
 }
 
 /// Error detail for protocol errors.

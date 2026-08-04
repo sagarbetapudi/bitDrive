@@ -7,7 +7,6 @@ option java_multiple_files = true;
 option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
-import "frame.proto";
 
 /// Authentication methods supported.
 enum AuthMethod {

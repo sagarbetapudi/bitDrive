@@ -1,4 +1,4 @@
-//! Protocol error types
+//! Protocol error types protocol/src/error.rs
 
 use thiserror::Error;
 
@@ -13,6 +13,9 @@ pub enum ProtocolError {
 
     #[error("Protocol error: {0}")]
     Protocol(String),
+
+    #[error("Bluetooth error: {0}")]
+    Bluetooth(String),
 
     #[error("Invalid frame: {0}")]
     InvalidFrame(String),
@@ -35,8 +38,8 @@ pub enum ProtocolError {
     #[error("Unsupported protocol version: {version:#010x}")]
     UnsupportedVersion { version: u32 },
 
-    #[error("Unknown frame type: {type:?}")]
-    UnknownFrameType { type: u8 },
+    #[error("Unknown frame type: {r#type:?}")]
+    UnknownFrameType { r#type: u8 },
 
     #[error("Sequence number mismatch: expected {expected}, got {actual}")]
     SequenceMismatch { expected: u64, actual: u64 },
@@ -119,11 +122,14 @@ pub enum ProtocolError {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    #[error("Database error: {0}")]
+    Database(String),
+    
     #[error("Serialization error: {0}")]
-    Serialization(#[from] prost::EncodeError),
+    Serialization(String),
 
     #[error("Deserialization error: {0}")]
-    Deserialization(#[from] prost::DecodeError),
+    Deserialization(String),
 
     #[error("Timeout: {0}")]
     Timeout(String),
@@ -173,7 +179,18 @@ impl ProtocolError {
                 | ProtocolError::ChecksumMismatch { .. }
                 | ProtocolError::InvalidMagic { .. }
                 | ProtocolError::KeyDerivation(_)
-                | ProtocolError::KeyDerivation(_)
         )
+    }
+}
+
+impl From<prost::EncodeError> for ProtocolError {
+    fn from(e: prost::EncodeError) -> Self {
+        ProtocolError::Serialization(e.to_string())
+    }
+}
+
+impl From<prost::DecodeError> for ProtocolError {
+    fn from(e: prost::DecodeError) -> Self {
+        ProtocolError::Deserialization(e.to_string())
     }
 }

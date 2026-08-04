@@ -8,18 +8,18 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 
-/// File streaming service identifier.
-const string FILE_STREAM_SERVICE_ID = "bpl.file_stream";
-const uint32 FILE_STREAM_SERVICE_VERSION = 1;
+/// File streaming service identifier constants are defined in Rust:
+/// pub const FILE_STREAM_SERVICE_ID: &str = "bpl.file_stream";
+/// pub const FILE_STREAM_SERVICE_VERSION: u32 = 1;
 
 /// File stream operation types.
 enum StreamOpType {
-  OP_OPEN = 0;           // Open stream
-  OP_CLOSE = 1;          // Close stream
-  OP_READ = 2;           // Read chunk
-  OP_SEEK = 3;           // Seek position
-  OP_GET_INFO = 4;       // Get stream info
-  OP_LIST_STREAMS = 5;   // List active streams
+  STREAM_OP_OPEN = 0;           // Open stream
+  STREAM_OP_CLOSE = 1;          // Close stream
+  STREAM_OP_READ = 2;           // Read chunk
+  STREAM_OP_SEEK = 3;           // Seek position
+  STREAM_OP_GET_INFO = 4;       // Get stream info
+  STREAM_OP_LIST_STREAMS = 5;   // List active streams
 }
 
 /// Stream ID for identifying active streams.

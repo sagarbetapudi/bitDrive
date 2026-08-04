@@ -8,21 +8,21 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 
-/// Photo backup service identifier.
-const string PHOTO_BACKUP_SERVICE_ID = "bpl.photo_backup";
-const uint32 PHOTO_BACKUP_SERVICE_VERSION = 1;
+/// Photo backup service identifier constants are defined in Rust:
+/// pub const PHOTO_BACKUP_SERVICE_ID: &str = "bpl.photo_backup";
+/// pub const PHOTO_BACKUP_SERVICE_VERSION: u32 = 1;
 
 /// Photo backup operation types.
 enum PhotoBackupOpType {
-  OP_START_BACKUP = 0;
-  OP_STOP_BACKUP = 1;
-  OP_GET_STATUS = 2;
-  OP_GET_PROGRESS = 3;
-  OP_LIST_ALBUMS = 4;
-  OP_GET_ALBUM = 5;
-  OP_GET_PHOTO = 6;
-  OP_SCAN_PHOTOS = 7;
-  OP_CONFIGURE = 8;
+  PHOTO_BACKUP_OP_START_BACKUP = 0;
+  PHOTO_BACKUP_OP_STOP_BACKUP = 1;
+  PHOTO_BACKUP_OP_GET_STATUS = 2;
+  PHOTO_BACKUP_OP_GET_PROGRESS = 3;
+  PHOTO_BACKUP_OP_LIST_ALBUMS = 4;
+  PHOTO_BACKUP_OP_GET_ALBUM = 5;
+  PHOTO_BACKUP_OP_GET_PHOTO = 6;
+  PHOTO_BACKUP_OP_SCAN_PHOTOS = 7;
+  PHOTO_BACKUP_OP_CONFIGURE = 8;
 }
 
 /// Photo metadata.

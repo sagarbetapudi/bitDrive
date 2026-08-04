@@ -12,22 +12,22 @@ use hmac::{Hmac, Mac};
 use hkdf::Hkdf;
 use rand::{RngCore, thread_rng};
 use sha2::Sha256;
-use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
     pb::{
         AuthChallenge, AuthMethod, AuthResponse, AuthSuccess, AuthFailure,
-        ChannelId, ChannelKeys, SessionKeys, SessionKeySet, KeyDerivationParams,
         PairingRecord,
     },
     error::{ProtocolError, Result},
 };
 
+use serde::{Serialize, Deserialize};
+
 /// HMAC-SHA256 type
 type HmacSha256 = Hmac<Sha256>;
 
 /// Session key material
-#[derive(Debug, Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionKeys {
     pub master_key: [u8; 32],
     pub encryption_key: [u8; 32],
@@ -49,7 +49,7 @@ impl Default for SessionKeys {
 }
 
 /// Per-channel derived keys
-#[derive(Debug, Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelKeys {
     pub encryption_key: [u8; 32],
     pub authentication_key: [u8; 32],
@@ -113,12 +113,10 @@ impl AuthManager {
         thread_rng().fill_bytes(&mut salt);
 
         Ok(AuthChallenge {
-            method: self.method as i32,
             challenge: challenge.to_vec(),
+            method: "psk".to_string(),
             salt: salt.to_vec(),
             iterations: 100_000,
-            server_public_key: vec![],
-            parameters: Default::default(),
         })
     }
 
@@ -149,12 +147,11 @@ impl AuthManager {
         Ok(AuthSuccess {
             key_confirmation: server_hmac.to_vec(),
             session_keys_encrypted: encrypted_keys,
-            session_keys: Some(session_keys.into()),
         })
     }
 
     /// Verify server authentication response (client side)
-    pub fn verify_server_response(&self, challenge: &AuthChallenge, response: &AuthSuccess) -> Result<SessionKeys> {
+    pub fn verify_server_response(&self, challenge: &AuthChallenge, _response: &AuthSuccess) -> Result<SessionKeys> {
         let psk = self.get_psk().ok_or(ProtocolError::AuthenticationFailed(
             "PSK not configured".to_string()
         ))?;
@@ -178,7 +175,7 @@ impl AuthManager {
         &self,
         psk: &[u8; 32],
         challenge: &AuthChallenge,
-        client_nonce: &[u8],
+        _client_nonce: &[u8],
     ) -> Result<SessionKeys> {
         let mut keys = SessionKeys::default();
 
@@ -240,7 +237,7 @@ impl AuthManager {
         challenge: &AuthChallenge,
         client_nonce: &[u8],
     ) -> Result<Vec<u8>> {
-        let mut mac = HmacSha256::new_from_slice(psk)
+        let mut mac = <HmacSha256 as KeyInit>::new_from_slice(psk)
             .map_err(|_| ProtocolError::AuthenticationFailed("HMAC init failed".to_string()))?;
 
         mac.update(&challenge.challenge);
@@ -257,7 +254,7 @@ impl AuthManager {
         challenge: &AuthChallenge,
         client_nonce: &[u8],
     ) -> Result<Vec<u8>> {
-        let mut mac = HmacSha256::new_from_slice(psk)
+        let mut mac = <HmacSha256 as KeyInit>::new_from_slice(psk)
             .map_err(|_| ProtocolError::AuthenticationFailed("HMAC init failed".to_string()))?;
 
         mac.update(&challenge.challenge);
@@ -333,7 +330,8 @@ impl AuthManager {
 
     /// Add pairing record
     pub fn add_pairing(&self, record: PairingRecord) {
-        self.pairing_records.write().insert(record.device_id.value.clone(), record);
+        let dev_id = record.device_id.as_ref().map_or_else(Vec::new, |d| d.value.clone());
+        self.pairing_records.write().insert(dev_id, record);
     }
 
     /// Get pairing record
@@ -409,17 +407,17 @@ pub fn decrypt_with_channel_keys(
 
 /// Authenticate data with HMAC
 pub fn authenticate_data(data: &[u8], keys: &ChannelKeys) -> [u8; 32] {
-    let mut mac = HmacSha256::new_from_slice(&keys.authentication_key)
+    let mut mac = <HmacSha256 as KeyInit>::new_from_slice(&keys.authentication_key)
         .expect("HMAC key is valid");
     mac.update(data);
-    mac.finalize().into_bytes()
+    mac.finalize().into_bytes().into()
 }
 
 /// Verify data authentication
 pub fn verify_authentication(data: &[u8], tag: &[u8], keys: &ChannelKeys) -> bool {
     let expected = authenticate_data(data, keys);
     // Constant-time comparison
-    subtle::ConstantTimeEq::ct_eq(&expected, tag).into()
+    expected[..].ct_eq(tag).into()
 }
 
 use subtle::ConstantTimeEq;
@@ -444,11 +442,9 @@ mod tests {
         thread_rng().fill_bytes(&mut client_nonce);
 
         let response = AuthResponse {
-            method: AuthMethod::Psk as i32,
             response: auth.compute_client_hmac(&psk, &challenge, &client_nonce).unwrap(),
-            client_public_key: vec![],
             client_nonce: client_nonce.to_vec(),
-            proof: vec![],
+            public_key: vec![],
         };
 
         // Verify
@@ -473,11 +469,9 @@ mod tests {
         thread_rng().fill_bytes(&mut client_nonce);
 
         let response = AuthResponse {
-            method: AuthMethod::Psk as i32,
             response: auth.compute_client_hmac(&psk, &challenge, &client_nonce).unwrap(),
-            client_public_key: vec![],
             client_nonce: client_nonce.to_vec(),
-            proof: vec![],
+            public_key: vec![],
         };
 
         auth.verify_response(&challenge, &response).unwrap();
@@ -509,11 +503,9 @@ mod tests {
         thread_rng().fill_bytes(&mut client_nonce);
 
         let response = AuthResponse {
-            method: AuthMethod::Psk as i32,
             response: auth.compute_client_hmac(&psk, &challenge, &client_nonce).unwrap(),
-            client_public_key: vec![],
             client_nonce: client_nonce.to_vec(),
-            proof: vec![],
+            public_key: vec![],
         };
 
         auth.verify_response(&challenge, &response).unwrap();

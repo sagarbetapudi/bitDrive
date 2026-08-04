@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use bpl_protocol::{
-    DeviceId, SessionId, ChannelId, ServiceCapability, NegotiatedCapability,
-    ProtocolError, Result, ServiceCapability as ProtoServiceCapability,
+        DeviceId, SessionId, ChannelId, NegotiatedCapability,
+        ResultCode, ProtocolError, Result, ServiceCapability as ProtoServiceCapability,
 };
 
 use crate::{ConfigManager, Database, events::EventBus};
@@ -117,7 +117,29 @@ pub trait Service: Send + Sync {
     async fn stop(&mut self) -> Result<()>;
 
     /// Handle incoming request from protocol
-    async fn handle_request(&mut self, request: ServiceRequest) -> Result<ServiceResponse>;
+    /// Handle request by routing to appropriate service
+    pub async fn handle_request(&self, request: ServiceRequest) -> Result<ServiceResponse> {
+        let service_id = request.service_id.clone();
+        let request_id = request.request_id;
+
+        // Remove the service so no lock is held across .await
+        let service = self.services.write().remove(&service_id);
+
+        if let Some(mut service) = service {
+            let result = service.handle_request(request).await;
+
+            // Always put the service back
+            self.services.write().insert(service_id, service);
+
+            result
+        } else {
+            Ok(ServiceResponse::error(
+                request_id,
+                ResultCode::ErrorNotFound as i32,
+                format!("Service not found: {}", service_id),
+            ))
+        }
+    }
 
     /// Handle event from event bus
     async fn handle_event(&mut self, event: ServiceEvent) -> Result<()>;
@@ -328,26 +350,37 @@ impl ServiceManager {
         if let Some(service) = services.get(&request.service_id) {
             service.handle_request(request).await
         } else {
+            let service_id = request.service_id.clone();
+
             Ok(ServiceResponse::error(
                 request.request_id,
-                ProtocolError::ServiceNotFound { service_id: request.service_id }.into(),
-                format!("Service not found: {}", request.service_id),
+                ResultCode::ErrorNotFound as i32,
+                format!("Service not found: {}", service_id),
             ))
         }
     }
 
     /// Broadcast event to all services
-    pub async fn broadcast_event(&self, event: ServiceEvent) -> Result<()> {
-        let services = self.services.read();
+    /// Broadcast event to all services
+pub async fn broadcast_event(&self, event: ServiceEvent) -> Result<()> {
+    let service_ids: Vec<String> =
+        self.services.read().keys().cloned().collect();
 
-        for (id, service) in services.iter() {
+    for id in service_ids {
+        let service = self.services.write().remove(&id);
+
+        if let Some(mut service) = service {
             if let Err(e) = service.handle_event(event.clone()).await {
                 error!("Error handling event in {}: {}", id, e);
             }
-        }
 
-        Ok(())
+            // Always put the service back
+            self.services.write().insert(id, service);
+        }
     }
+
+    Ok(())
+}
 
     /// List all registered services
     pub fn list_services(&self) -> Vec<String> {

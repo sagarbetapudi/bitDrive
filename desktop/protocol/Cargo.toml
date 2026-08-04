@@ -21,7 +21,7 @@ crc32fast = { workspace = true }
 bitflags = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde", "fast-rng"] }
 smallvec = { workspace = true }
-rand = { workspace = true, features = ["std", "rng"] }
+rand = { workspace = true, features = ["std"] }
 rand_chacha = { workspace = true }
 blake3 = { workspace = true }
 ring = { workspace = true }
@@ -34,7 +34,7 @@ sha2 = { workspace = true }
 parking_lot = { workspace = true }
 
 # Protocol dependencies
-prost-derive = { version = "0.12", features = ["prost-types"] }
+prost-derive = { version = "0.12" }
 async-trait = "0.1"
 bincode = { workspace = true }
 subtle = "2.5"
@@ -44,4 +44,3 @@ prost-build = { workspace = true }
 
 [features]
 default = []
-serde = ["prost/serde"]

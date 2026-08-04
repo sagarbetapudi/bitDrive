@@ -77,20 +77,21 @@ impl ServiceRegistry {
         if self.services.read().contains_key(&service_id) {
             return Ok(ServiceRegisterResponse {
                 result: crate::pb::ResultCode::ErrorGeneric as i32,
-                assigned_channel: crate::pb::ChannelId { value: 0 },
+                assigned_channel: Some(crate::pb::ChannelId { value: 0 }),
                 error_message: "Service already registered".to_string(),
             });
         }
+
+        let ch_id = channel_config.channel_id.as_ref().map_or(0, |c| c.value);
 
         let service = Arc::new(RwLock::new(RegisteredService {
             info: ServiceInfo {
                 service_id: service_id.clone(),
                 version: capability.version,
-                name: capability.name,
-                description: capability.description,
-                channel_id: crate::pb::ChannelId { value: channel_config.channel_id.value },
-                channel_type: crate::pb::ChannelType::try_from(channel_config.r#type)
-                    .unwrap_or(crate::pb::ChannelType::Data),
+                name: capability.name.clone(),
+                description: capability.description.clone(),
+                channel_id: channel_config.channel_id.clone(),
+                channel_type: channel_config.r#type,
                 active: true,
                 healthy: true,
                 registered_at: Some(crate::pb::Timestamp {
@@ -108,8 +109,8 @@ impl ServiceRegistry {
                 metadata: capability.metadata.clone(),
                 feature_flags: capability.feature_flags,
             },
-            capability,
-            channel_id: channel_config.channel_id.value,
+            capability: capability.clone(),
+            channel_id: ch_id,
             last_heartbeat: Instant::now(),
             healthy: true,
         }));
@@ -124,7 +125,7 @@ impl ServiceRegistry {
 
         Ok(ServiceRegisterResponse {
             result: crate::pb::ResultCode::Success as i32,
-            assigned_channel: crate::pb::ChannelId { value: channel_config.channel_id.value },
+            assigned_channel: channel_config.channel_id.clone(),
             error_message: String::new(),
         })
     }
@@ -314,9 +315,9 @@ mod tests {
         };
 
         let channel_config = crate::pb::ChannelConfig {
-            channel_id: crate::pb::ChannelId { value: 1 },
+            channel_id: Some(crate::pb::ChannelId { value: 1 }),
             r#type: crate::pb::ChannelType::Data as i32,
-            priority: crate::pb::ChannelPriority::Normal as i32,
+            priority: crate::pb::ChannelPriority::PriorityNormal as i32,
             send_window: 65536,
             receive_window: 65536,
             max_frame_size: 16384,
@@ -341,7 +342,7 @@ mod tests {
 
         let unreg = registry.unregister_service(ServiceUnregisterRequest {
             service_id: "test.service".to_string(),
-            channel_id: 1,
+            channel_id: Some(crate::pb::ChannelId { value: 1 }),
         }).unwrap();
         assert_eq!(unreg.result, crate::pb::ResultCode::Success as i32);
 

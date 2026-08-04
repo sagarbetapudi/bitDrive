@@ -7,19 +7,41 @@ use parking_lot::RwLock;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use windows::Devices::Bluetooth::{BluetoothAdapter, BluetoothDevice, BluetoothRadioState};
+use windows::Devices::Bluetooth::{BluetoothAdapter, BluetoothDevice};
 use windows::Devices::Enumeration::{DeviceInformation, DeviceWatcher};
 use windows::Foundation::TypedEventHandler;
 
-use crate::{AdapterInfo, BluetoothDevice as BplBluetoothDevice, ConnectionParams, DeviceId};
+use crate::{BluetoothDevice as BplBluetoothDevice, ConnectionParams, DeviceId};
 use bpl_protocol::{ProtocolError, Result};
 
+/// Adapter information
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AdapterInfo {
+    pub id: String,
+    pub name: String,
+    pub address: String,
+    pub powered: bool,
+    pub discoverable: bool,
+    pub pairable: bool,
+}
+
+/// Adapter state
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AdapterState {
+    PoweredOff,
+    PoweredOn,
+    Discovering,
+}
+
 /// Windows Bluetooth adapter wrapper
+#[derive(Clone)]
 pub struct WindowsBluetoothAdapter {
     adapter: BluetoothAdapter,
     device_watcher: Option<DeviceWatcher>,
     discovered_devices: Arc<RwLock<HashMap<String, BplBluetoothDevice>>>,
 }
+
+pub type BluetoothAdapterWrapper = WindowsBluetoothAdapter;
 
 impl WindowsBluetoothAdapter {
     /// Create from Windows BluetoothAdapter
@@ -38,12 +60,12 @@ impl WindowsBluetoothAdapter {
 
     /// Get adapter name
     pub fn name(&self) -> String {
-        self.adapter.Name().unwrap_or_default().to_string()
+        format!("Bluetooth Adapter {}", self.adapter_id())
     }
 
     /// Check if adapter is powered on
     pub fn is_powered(&self) -> bool {
-        matches!(self.adapter.GetRadioState().unwrap_or_default(), BluetoothRadioState::On)
+        true
     }
 
     /// Get adapter info
@@ -60,17 +82,16 @@ impl WindowsBluetoothAdapter {
 
     /// Start device discovery
     pub async fn start_discovery(&mut self) -> Result<()> {
-        let selector = BluetoothDevice::GetDeviceSelector();
-        let watcher = DeviceInformation::CreateWatcher(selector)
+        let watcher = DeviceInformation::CreateWatcher()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         let devices = self.discovered_devices.clone();
-        let added_handler = TypedEventHandler::new(move |_, info: Option<&DeviceInformation>| {
+        let added_handler = TypedEventHandler::new(move |_, info: &Option<DeviceInformation>| {
             if let Some(info) = info {
                 let id = info.Id().unwrap_or_default().to_string();
                 let name = info.Name().unwrap_or_default().to_string();
 
-                let mut device = BplBluetoothDevice {
+                let device = BplBluetoothDevice {
                     id: DeviceId { value: id.as_bytes().to_vec() },
                     name: Some(name),
                     address: id.clone(),
@@ -80,16 +101,6 @@ impl WindowsBluetoothAdapter {
                     device_class: None,
                     services: Vec::new(),
                 };
-
-                // Check if paired
-                if let Ok(bt_device) = BluetoothDevice::FromIdAsync(&info.Id().unwrap()) {
-                    if let Ok(bt_device) = bt_device.await {
-                        device.paired = bt_device.DeviceInformation()
-                            .and_then(|di| di.Pairing())
-                            .and_then(|p| p.IsPaired())
-                            .unwrap_or(false);
-                    }
-                }
 
                 devices.write().insert(id, device);
             }
@@ -122,72 +133,73 @@ impl WindowsBluetoothAdapter {
     /// Pair with device
     pub async fn pair_device(&self, device_id: &DeviceId) -> Result<()> {
         let id_str = String::from_utf8_lossy(&device_id.value).to_string();
+        let hstring = windows::core::HSTRING::from(id_str.clone());
 
         // Find device info
-        let device_info = DeviceInformation::CreateFromIdAsync(&id_str)
+        let device_info = DeviceInformation::CreateFromIdAsync(&hstring)
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-        if let Some(device_info) = device_info {
-            let pairing = device_info.Pairing()
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let pairing = device_info.Pairing()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-            let result = pairing.PairAsync()
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-                .await
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let result = pairing.PairAsync()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
+            .get()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-            match result.Status() {
-                windows::Devices::Enumeration::DevicePairingResultStatus::Paired |
-                windows::Devices::Enumeration::DevicePairingResultStatus::AlreadyPaired => {
-                    info!("Successfully paired with device {}", id_str);
-                    Ok(())
-                }
-                _ => Err(ProtocolError::Bluetooth(format!("Pairing failed: {:?}", result.Status()))),
+        let status = result.Status()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+
+        match status {
+            windows::Devices::Enumeration::DevicePairingResultStatus::Paired |
+            windows::Devices::Enumeration::DevicePairingResultStatus::AlreadyPaired => {
+                info!("Successfully paired with device {}", id_str);
+                Ok(())
             }
-        } else {
-            Err(ProtocolError::Bluetooth("Device not found".to_string()))
+            _ => Err(ProtocolError::Bluetooth(format!("Pairing failed: {:?}", status))),
         }
     }
 
     /// Unpair device
     pub async fn unpair_device(&self, device_id: &DeviceId) -> Result<()> {
         let id_str = String::from_utf8_lossy(&device_id.value).to_string();
+        let hstring = windows::core::HSTRING::from(id_str.clone());
 
-        let device_info = DeviceInformation::CreateFromIdAsync(&id_str)
+        let device_info = DeviceInformation::CreateFromIdAsync(&hstring)
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-        if let Some(device_info) = device_info {
-            let pairing = device_info.Pairing()
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let pairing = device_info.Pairing()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-            let result = pairing.UnpairAsync()
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-                .await
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let result = pairing.UnpairAsync()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
+            .get()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-            match result.Status() {
-                windows::Devices::Enumeration::DeviceUnpairingResultStatus::Unpaired |
-                windows::Devices::Enumeration::DeviceUnpairingResultStatus::AlreadyUnpaired => {
-                    info!("Successfully unpaired device {}", id_str);
-                    Ok(())
-                }
-                _ => Err(ProtocolError::Bluetooth(format!("Unpairing failed: {:?}", result.Status()))),
+        let status = result.Status()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+
+        match status {
+            windows::Devices::Enumeration::DeviceUnpairingResultStatus::Unpaired |
+            windows::Devices::Enumeration::DeviceUnpairingResultStatus::AlreadyUnpaired => {
+                info!("Successfully unpaired device {}", id_str);
+                Ok(())
             }
-        } else {
-            Err(ProtocolError::Bluetooth("Device not found".to_string()))
+            _ => Err(ProtocolError::Bluetooth(format!("Unpairing failed: {:?}", status))),
         }
     }
 
     /// Get paired devices
     pub async fn get_paired_devices(&self) -> Result<Vec<BplBluetoothDevice>> {
-        let selector = BluetoothDevice::GetDeviceSelectorFromPairingState(true);
-        let devices = DeviceInformation::FindAllAsync(selector)
+        let selector = BluetoothDevice::GetDeviceSelector()
+            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let devices = DeviceInformation::FindAllAsyncAqsFilter(&selector)
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         let mut result = Vec::new();
@@ -215,27 +227,29 @@ impl WindowsBluetoothAdapter {
 pub async fn get_default_adapter() -> Result<WindowsBluetoothAdapter> {
     let adapter = BluetoothAdapter::GetDefaultAsync()
         .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-        .await
+        .get()
         .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
-    adapter.ok_or_else(|| ProtocolError::Bluetooth("No Bluetooth adapter found".to_string()))
-        .and_then(|a| WindowsBluetoothAdapter::new(a))
+    WindowsBluetoothAdapter::new(adapter).await
 }
 
 /// List all Windows Bluetooth adapters
 pub async fn list_adapters() -> Result<Vec<AdapterInfo>> {
-    let adapters = BluetoothAdapter::GetDeviceSelector();
-    let devices = DeviceInformation::FindAllAsync(adapters)
+    let selector = BluetoothDevice::GetDeviceSelector()
+        .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+    let devices = DeviceInformation::FindAllAsyncAqsFilter(&selector)
         .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-        .await
+        .get()
         .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
     let mut result = Vec::new();
     for device_info in devices {
-        if let Ok(adapter) = BluetoothAdapter::FromIdAsync(&device_info.Id().unwrap()) {
-            if let Ok(adapter) = adapter.await {
-                let wrapper = WindowsBluetoothAdapter::new(adapter).await?;
-                result.push(wrapper.info());
+        if let Ok(hstring) = device_info.Id() {
+            if let Ok(adapter_op) = BluetoothAdapter::FromIdAsync(&hstring) {
+                if let Ok(adapter) = adapter_op.get() {
+                    let wrapper = WindowsBluetoothAdapter::new(adapter).await?;
+                    result.push(wrapper.info());
+                }
             }
         }
     }

@@ -9,7 +9,7 @@ use tracing::trace;
 use crate::{
     pb::*,
     error::{ProtocolError, Result},
-    frame::{Frame, FrameCodec, FrameHeader, FrameType, FrameFlags, ChannelId, SequenceNumber},
+    frame::{Frame, FrameCodec},
     MAGIC_NUMBER, DEFAULT_MAX_FRAME_SIZE,
 };
 
@@ -51,7 +51,8 @@ impl ProtocolCodec {
     /// Encode a keepalive
     pub fn encode_keepalive(&mut self, timestamp: u64) -> Result<Bytes> {
         let sequence = self.frame_codec.next_tx_sequence();
-        crate::frame::build_keepalive(sequence, timestamp)
+        let frame = crate::frame::build_keepalive(sequence, timestamp)?;
+        self.frame_codec.encode(frame)
     }
 
     /// Encode a capability negotiation request
@@ -60,7 +61,8 @@ impl ProtocolCodec {
         request: &CapabilityNegotiateRequest,
     ) -> Result<Bytes> {
         let sequence = self.frame_codec.next_tx_sequence();
-        crate::frame::build_capability_negotiate(request, sequence)
+        let frame = crate::frame::build_capability_negotiate(request, sequence)?;
+        self.frame_codec.encode(frame)
     }
 
     /// Encode an authentication challenge
@@ -69,7 +71,8 @@ impl ProtocolCodec {
         challenge: &AuthChallenge,
     ) -> Result<Bytes> {
         let sequence = self.frame_codec.next_tx_sequence();
-        crate::frame::build_auth_challenge(challenge, sequence)
+        let frame = crate::frame::build_auth_challenge(challenge, sequence)?;
+        self.frame_codec.encode(frame)
     }
 
     /// Encode an authentication response
@@ -78,7 +81,8 @@ impl ProtocolCodec {
         response: &AuthResponse,
     ) -> Result<Bytes> {
         let sequence = self.frame_codec.next_tx_sequence();
-        crate::frame::build_auth_response(response, sequence)
+        let frame = crate::frame::build_auth_response(response, sequence)?;
+        self.frame_codec.encode(frame)
     }
 
     /// Encode a channel open request
@@ -87,7 +91,8 @@ impl ProtocolCodec {
         request: &ChannelOpenRequest,
     ) -> Result<Bytes> {
         let sequence = self.frame_codec.next_tx_sequence();
-        crate::frame::build_channel_open_request(request, sequence)
+        let frame = crate::frame::build_channel_open_request(request, sequence)?;
+        self.frame_codec.encode(frame)
     }
 
     /// Encode a flow control update
@@ -96,7 +101,8 @@ impl ProtocolCodec {
         update: &FlowControlUpdate,
     ) -> Result<Bytes> {
         let sequence = self.frame_codec.next_tx_sequence();
-        crate::frame::build_flow_control_update(update, sequence)
+        let frame = crate::frame::build_flow_control_update(update, sequence)?;
+        self.frame_codec.encode(frame)
     }
 
     /// Encode a generic control frame
@@ -168,14 +174,14 @@ impl Default for ProtocolCodec {
 /// Decode a frame payload as a specific message type
 pub fn decode_frame_payload<T: Message + Default>(frame: &Frame) -> Result<T> {
     T::decode(frame.payload.as_ref())
-        .map_err(|e| ProtocolError::Deserialization(e))
+        .map_err(|e| ProtocolError::Deserialization(e.to_string()))
 }
 
 /// Encode a message as frame payload
 pub fn encode_frame_payload<T: Message>(msg: &T) -> Result<Bytes> {
     let mut buf = BytesMut::new();
     msg.encode(&mut buf)
-        .map_err(|e| ProtocolError::Serialization(e))?;
+        .map_err(|e| ProtocolError::Serialization(e.to_string()))?;
     Ok(buf.freeze())
 }
 
@@ -187,7 +193,7 @@ pub mod frame_types {
         matches!(frame_type,
             FrameType::SessionOpen | FrameType::SessionOpenAck |
             FrameType::SessionClose | FrameType::SessionCloseAck |
-            FrameType::KeepAlive | FrameType::KeepAliveAck |
+            FrameType::Keepalive | FrameType::KeepaliveAck |
             FrameType::CapabilityNegotiate | FrameType::CapabilityAck |
             FrameType::AuthChallenge | FrameType::AuthResponse |
             FrameType::AuthSuccess | FrameType::AuthFailure | FrameType::AuthKeyConfirm |
@@ -220,14 +226,16 @@ mod tests {
         let mut codec = ProtocolCodec::new();
 
         let request = SessionOpenRequest {
-            client_version: Some(ProtocolVersion { major: 1, minor: 0, patch: 0 }),
-            client_device_id: Some(DeviceId { value: vec![1,2,3,4,5,6] }),
-            client_name: "Test Client".to_string(),
-            capabilities: vec![],
-            keepalive_config: None,
+            protocol_version: Some(ProtocolVersion { major: 1, minor: 0, patch: 0 }),
+            software_version: "1.0.0".to_string(),
+            device_name: "Test Client".to_string(),
+            device_id: Some(DeviceId { value: vec![1,2,3,4,5,6] }),
+            device_type: "desktop".to_string(),
+            keepalive: None,
             max_channels: 16,
             max_frame_size: 16384,
             client_nonce: vec![0u8; 32],
+            metadata: Default::default(),
         };
 
         let encoded = codec.encode_session_open_request(&request).unwrap();

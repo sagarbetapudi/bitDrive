@@ -8,23 +8,23 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 
-/// Config service identifier.
-const string CONFIG_SERVICE_ID = "bpl.config";
-const uint32 CONFIG_SERVICE_VERSION = 1;
+/// Config service identifier constants are defined in Rust:
+/// pub const CONFIG_SERVICE_ID: &str = "bpl.config";
+/// pub const CONFIG_SERVICE_VERSION: u32 = 1;
 
 /// Config operation types.
 enum ConfigOpType {
-  OP_GET = 0;                 // Get config value
-  OP_SET = 1;                 // Set config value
-  OP_DELETE = 2;              // Delete config value
-  OP_LIST = 3;                // List all config
-  OP_GET_SCHEMA = 4;          // Get config schema
-  OP_VALIDATE = 5;            // Validate config
-  OP_RESET = 6;               // Reset to defaults
-  OP_EXPORT = 7;              // Export config
-  OP_IMPORT = 8;              // Import config
-  OP_SUBSCRIBE = 9;           // Subscribe to changes
-  OP_UNSUBSCRIBE = 10;        // Unsubscribe
+  CONFIG_OP_GET = 0;                 // Get config value
+  CONFIG_OP_SET = 1;                 // Set config value
+  CONFIG_OP_DELETE = 2;              // Delete config value
+  CONFIG_OP_LIST = 3;                // List all config
+  CONFIG_OP_GET_SCHEMA = 4;          // Get config schema
+  CONFIG_OP_VALIDATE = 5;            // Validate config
+  CONFIG_OP_RESET = 6;               // Reset to defaults
+  CONFIG_OP_EXPORT = 7;              // Export config
+  CONFIG_OP_IMPORT = 8;              // Import config
+  CONFIG_OP_SUBSCRIBE = 9;           // Subscribe to changes
+  CONFIG_OP_UNSUBSCRIBE = 10;        // Unsubscribe
 }
 
 /// Config value (any type).

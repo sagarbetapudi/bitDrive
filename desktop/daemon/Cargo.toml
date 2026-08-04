@@ -24,4 +24,3 @@ uuid = { workspace = true, features = ["v4", "serde", "fast-rng"] }
 bpl-core = { path = "../core" }
 bpl-protocol = { path = "../protocol" }
 bpl-bluetooth = { path = "../bluetooth" }
-bpl-config = { path = "../core" }

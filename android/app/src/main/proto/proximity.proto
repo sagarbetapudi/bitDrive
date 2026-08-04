@@ -8,9 +8,9 @@ option go_package = "github.com/bluetoothpersonallink/protocol/go";
 
 import "common.proto";
 
-/// Proximity service identifier.
-const string PROXIMITY_SERVICE_ID = "bpl.proximity";
-const uint32 PROXIMITY_SERVICE_VERSION = 1;
+/// Proximity service identifier constants are defined in Rust:
+/// pub const PROXIMITY_SERVICE_ID: &str = "bpl.proximity";
+/// pub const PROXIMITY_SERVICE_VERSION: u32 = 1;
 
 /// Proximity states.
 enum ProximityState {
@@ -22,12 +22,12 @@ enum ProximityState {
 
 /// Proximity operation types.
 enum ProximityOpType {
-  OP_GET_STATE = 0;
-  OP_SUBSCRIBE = 1;
-  OP_UNSUBSCRIBE = 2;
-  OP_GET_RSSI = 3;
-  OP_SET_POLICY = 4;
-  OP_GET_POLICY = 5;
+  PROXIMITY_OP_GET_STATE = 0;
+  PROXIMITY_OP_SUBSCRIBE = 1;
+  PROXIMITY_OP_UNSUBSCRIBE = 2;
+  PROXIMITY_OP_GET_RSSI = 3;
+  PROXIMITY_OP_SET_POLICY = 4;
+  PROXIMITY_OP_GET_POLICY = 5;
 }
 
 /// RSSI reading.
@@ -52,7 +52,7 @@ message ProximityStateInfo {
 
 /// Proximity policy for automatic actions.
 message ProximityPolicy {
-  struct PolicyRule {
+  message PolicyRule {
     ProximityState trigger_state = 1;
     PolicyAction action = 2;
     map<string, string> params = 3; // Action-specific params

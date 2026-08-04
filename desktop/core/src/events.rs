@@ -1,4 +1,4 @@
-//! Event bus for inter-service communication
+//! Event bus for inter-service communication /desktop/core/src/events.rs
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use tracing::{debug, trace};
 
-use bpl_protocol::{DeviceId, SessionId, ChannelId, NegotiatedCapability, ProtocolError, Result};
+use bpl_protocol::{DeviceId, SessionId, ChannelId, NegotiatedCapability, Result};
 
 /// Event types for the system
 #[derive(Debug, Clone)]
@@ -272,8 +272,10 @@ impl EventBus {
         {
             let mut history = self.event_history.write();
             history.push(event.clone());
-            if history.len() > self.max_history {
-                history.drain(0..history.len() - self.max_history);
+            let excess = history.len().saturating_sub(self.max_history);
+
+            if excess > 0 {
+                history.drain(0..excess);
             }
         }
 

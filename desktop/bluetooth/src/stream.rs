@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::sync::Arc;
 
-use bytes::BytesMut;
+use bytes::{Buf, BytesMut};
 use futures::ready;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tracing::{debug, error, trace};
@@ -13,7 +13,7 @@ use windows::Networking::Sockets::StreamSocket;
 use windows::Storage::Streams::{DataReader, DataWriter, IInputStream, IOutputStream, InputStreamOptions};
 use windows::Foundation::TimeSpan;
 
-use crate::{StreamConfig, ConnectionParams};
+use crate::ConnectionParams;
 use bpl_protocol::{ProtocolError, Result};
 
 /// RFCOMM stream for async read/write operations
@@ -30,11 +30,13 @@ pub struct RfcommStream {
 impl RfcommStream {
     /// Create from existing socket
     pub fn from_socket(socket: StreamSocket) -> Self {
-        let reader = DataReader::CreateDataReader(socket.InputStream().unwrap()).unwrap();
-        let writer = DataWriter::CreateDataWriter(socket.OutputStream().unwrap()).unwrap();
+        let input_stream = socket.InputStream().unwrap();
+        let reader = DataReader::CreateDataReader(&input_stream).unwrap();
+        let output_stream = socket.OutputStream().unwrap();
+        let writer = DataWriter::CreateDataWriter(&output_stream).unwrap();
 
         // Configure for efficient reading
-        reader.InputStreamOptions(InputStreamOptions::Partial).unwrap();
+        reader.SetInputStreamOptions(InputStreamOptions::Partial).unwrap();
 
         Self {
             socket,
@@ -54,15 +56,15 @@ impl RfcommStream {
 
     /// Get remote address
     pub fn remote_address(&self) -> Option<String> {
-        self.socket.Information()
-            .and_then(|info| info.RemoteAddress())
-            .map(|addr| addr.ToString().unwrap_or_default().to_string())
+        self.socket.Information().ok()
+            .and_then(|info| info.RemoteAddress().ok())
+            .map(|addr| addr.DisplayName().unwrap_or_default().to_string())
     }
 
     /// Get remote port
     pub fn remote_port(&self) -> Option<String> {
-        self.socket.Information()
-            .and_then(|info| info.RemoteServiceName())
+        self.socket.Information().ok()
+            .and_then(|info| info.RemoteServiceName().ok())
             .map(|name| name.to_string())
     }
 
@@ -94,7 +96,7 @@ impl RfcommStream {
         let target_len = buf.len() as u32;
         let loaded = self.reader.LoadAsync(target_len)
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         if loaded == 0 {
@@ -126,7 +128,7 @@ impl RfcommStream {
 
         let stored = self.writer.StoreAsync()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         Ok(stored as usize)
@@ -143,7 +145,7 @@ impl RfcommStream {
 
         self.writer.FlushAsync()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?
-            .await
+            .get()
             .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
 
         Ok(())
@@ -196,33 +198,14 @@ impl Default for StreamConfig {
     }
 }
 
-/// Connection parameters
-#[derive(Debug, Clone)]
-pub struct ConnectionParams {
-    pub mtu: u16,
-    pub timeout_ms: u32,
-    pub retry_count: u32,
-    pub retry_delay_ms: u32,
-}
-
-impl Default for ConnectionParams {
-    fn default() -> Self {
-        Self {
-            mtu: 1024,
-            timeout_ms: 10000,
-            retry_count: 3,
-            retry_delay_ms: 1000,
-        }
-    }
-}
 
 /// AsyncRead implementation for RfcommStream
 impl AsyncRead for RfcommStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
-    ) -> Poll<Result<()>> {
+    ) -> Poll<std::io::Result<()>> {
         // Try to read from internal buffer first
         if !self.read_buffer.is_empty() {
             let len = std::cmp::min(buf.remaining(), self.read_buffer.len());
@@ -233,12 +216,10 @@ impl AsyncRead for RfcommStream {
 
         // Load more data
         let target_len = buf.remaining().min(self.config.buffer_size) as u32;
-        let load_op = self.reader.LoadAsync(target_len)
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
-
-        // Poll the load operation
-        let loaded = ready!(Pin::new(&mut load_op.into()).poll(cx))
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let loaded = match self.reader.LoadAsync(target_len).and_then(|op| op.get()) {
+            Ok(n) => n,
+            Err(e) => return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))),
+        };
 
         if loaded == 0 {
             self.closed = true;
@@ -247,8 +228,9 @@ impl AsyncRead for RfcommStream {
 
         // Read from reader into buffer
         let mut temp_buf = vec![0u8; loaded as usize];
-        self.reader.ReadBytes(&mut temp_buf)
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        if let Err(e) = self.reader.ReadBytes(&mut temp_buf) {
+            return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+        }
 
         let len = std::cmp::min(buf.remaining(), temp_buf.len());
         buf.put_slice(&temp_buf[..len]);
@@ -266,59 +248,56 @@ impl AsyncRead for RfcommStream {
 impl AsyncWrite for RfcommStream {
     fn poll_write(
         mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize>> {
+    ) -> Poll<std::io::Result<usize>> {
         if self.closed {
-            return Poll::Ready(Err(ProtocolError::Io(std::io::Error::new(
+            return Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "Stream closed",
-            ))));
+            )));
         }
 
         // Write to writer
-        self.writer.WriteBytes(buf)
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        if let Err(e) = self.writer.WriteBytes(buf) {
+            return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+        }
 
-        let store_op = self.writer.StoreAsync()
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
-
-        let written = ready!(Pin::new(&mut store_op.into()).poll(cx))
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        let written = match self.writer.StoreAsync().and_then(|op| op.get()) {
+            Ok(n) => n,
+            Err(e) => return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))),
+        };
 
         Poll::Ready(Ok(written as usize))
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         if self.closed {
-            return Poll::Ready(Err(ProtocolError::Io(std::io::Error::new(
+            return Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "Stream closed",
-            ))));
+            )));
         }
 
-        let flush_op = self.writer.FlushAsync()
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
-
-        ready!(Pin::new(&mut flush_op.into()).poll(cx))
-            .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+        if let Err(e) = self.writer.FlushAsync().and_then(|op| op.get()) {
+            return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+        }
 
         Poll::Ready(Ok(()))
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         if !self.closed {
-            // Flush then close
-            let flush_op = self.writer.FlushAsync()
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+            if let Err(e) = self.writer.FlushAsync().and_then(|op| op.get()) {
+                return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+            }
 
-            ready!(Pin::new(&mut flush_op.into()).poll(cx))
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
-
-            self.socket.Close()
-                .map_err(|e| ProtocolError::Bluetooth(e.to_string()))?;
+            if let Err(e) = self.socket.Close() {
+                return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+            }
             self.closed = true;
         }
+
         Poll::Ready(Ok(()))
     }
 }
